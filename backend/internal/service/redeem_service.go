@@ -142,6 +142,12 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	lotteryService       *LotteryService
+}
+
+// SetLotteryService 注入盲盒抽奖服务（wire 装配时调用，避免修改构造函数签名波及测试）。
+func (s *RedeemService) SetLotteryService(lotteryService *LotteryService) {
+	s.lotteryService = lotteryService
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -466,6 +472,13 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 			}
 		} else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+		}
+
+		// 余额正数入账触发盲盒抽奖次数发放（best-effort，失败不影响兑换结果）。
+		if s.lotteryService != nil && amount > 0 {
+			if err := s.lotteryService.GrantRechargeReward(txCtx, userID, amount); err != nil {
+				logger.LegacyPrintf("service.redeem", "[Lottery] Failed to grant recharge reward: user_id=%d amount=%.2f err=%v", userID, amount, err)
+			}
 		}
 
 	case RedeemTypeConcurrency:

@@ -306,6 +306,17 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+
+	// 每日盲盒抽奖
+	LotteryEnabled          bool
+	LotteryMinAmount        float64
+	LotteryMaxAmount        float64
+	LotteryRechargeUnit     float64
+	LotteryRechargeDailyMax int
+	LotteryLoginReward      int
+
+	// 每日消费排行榜
+	ConsumptionRankingEnabled bool
 }
 
 type DefaultSubscriptionSetting struct {

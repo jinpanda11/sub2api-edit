@@ -126,6 +126,14 @@ func RegisterUserRoutes(
 			redeem.GET("/history", h.Redeem.GetHistory)
 		}
 
+		// 每日盲盒抽奖
+		lottery := authenticated.Group("/lottery")
+		{
+			lottery.GET("/status", h.Lottery.GetStatus)
+			lottery.POST("/draw", h.Lottery.Draw)
+			lottery.GET("/records", h.Lottery.GetRecords)
+		}
+
 		// 用户订阅
 		subscriptions := authenticated.Group("/subscriptions")
 		{

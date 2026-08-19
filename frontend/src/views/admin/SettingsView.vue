@@ -7658,6 +7658,89 @@
           </div>
         </div>
 
+        <!-- 每日盲盒抽奖 -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.lottery.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.lottery.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.lottery.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.lottery.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.lottery_enabled" />
+            </div>
+
+            <div v-if="form.lottery_enabled" class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.lottery.minAmount') }}
+                </label>
+                <input v-model.number="form.lottery_min_amount" type="number" min="0.01" step="0.01" class="input mt-1.5" />
+              </div>
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.lottery.maxAmount') }}
+                </label>
+                <input v-model.number="form.lottery_max_amount" type="number" min="0.01" step="0.01" class="input mt-1.5" />
+              </div>
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.lottery.rechargeUnit') }}
+                </label>
+                <input v-model.number="form.lottery_recharge_unit" type="number" min="1" step="1" class="input mt-1.5" />
+              </div>
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.lottery.rechargeDailyMax') }}
+                </label>
+                <input v-model.number="form.lottery_recharge_daily_max" type="number" min="1" step="1" class="input mt-1.5" />
+              </div>
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.lottery.loginReward') }}
+                </label>
+                <input v-model.number="form.lottery_login_reward" type="number" min="0" step="1" class="input mt-1.5" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 每日消费排行榜 -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.consumptionRanking.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.consumptionRanking.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.consumptionRanking.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.consumptionRanking.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.consumption_ranking_enabled" />
+            </div>
+          </div>
+        </div>
+
         </div><!-- /Tab: Features -->
 
         <!-- Tab: Email -->
@@ -9756,6 +9839,15 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+  // Daily blind-box lottery
+  lottery_enabled: true,
+  lottery_min_amount: 0.1,
+  lottery_max_amount: 2,
+  lottery_recharge_unit: 10,
+  lottery_recharge_daily_max: 5,
+  lottery_login_reward: 1,
+  // Daily consumption ranking
+  consumption_ranking_enabled: true,
 });
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
@@ -11411,6 +11503,15 @@ async function saveSettings() {
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
+      // Daily blind-box lottery
+      lottery_enabled: form.lottery_enabled,
+      lottery_min_amount: Number(form.lottery_min_amount) || 0.1,
+      lottery_max_amount: Number(form.lottery_max_amount) || 2,
+      lottery_recharge_unit: Number(form.lottery_recharge_unit) || 10,
+      lottery_recharge_daily_max: Number(form.lottery_recharge_daily_max) || 5,
+      lottery_login_reward: Number(form.lottery_login_reward) || 1,
+      // Daily consumption ranking
+      consumption_ranking_enabled: form.consumption_ranking_enabled,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

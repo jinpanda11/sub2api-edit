@@ -698,3 +698,16 @@ const AdminAPIKeyPrefix = "admin-"
 // SettingKeyAllowUserViewErrorRequests controls whether end users can view
 // their own failed requests on the usage page. Default false (opt-in).
 const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"
+
+// 每日盲盒抽奖配置（settings 表 key，与 admin 设置表单共用）。
+const (
+	SettingKeyLotteryEnabled          = "lottery_enabled"            // 是否启用每日盲盒抽奖
+	SettingKeyLotteryMinAmount        = "lottery_min_amount"         // 单次中奖最小金额（余额单位）
+	SettingKeyLotteryMaxAmount        = "lottery_max_amount"         // 单次中奖最大金额（余额单位）
+	SettingKeyLotteryRechargeUnit     = "lottery_recharge_unit"      // 充值/兑换码入账多少个余额单位赠送 1 次
+	SettingKeyLotteryRechargeDailyMax = "lottery_recharge_daily_max" // 充值来源每日次数上限
+	SettingKeyLotteryLoginReward      = "lottery_login_reward"       // 每日登录奖励次数
+)
+
+// 每日消费排行榜配置。
+const SettingKeyConsumptionRankingEnabled = "consumption_ranking_enabled"

@@ -86,6 +86,12 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	lotteryService        *LotteryService
+}
+
+// SetLotteryService 注入盲盒抽奖服务（wire 装配时调用，避免修改构造函数签名波及测试）。
+func (s *AuthService) SetLotteryService(lotteryService *LotteryService) {
+	s.lotteryService = lotteryService
 }
 
 type CaptchaProof struct {
@@ -1026,6 +1032,13 @@ func (s *AuthService) touchUserLogin(ctx context.Context, userID int64) {
 		SetLastActiveAt(now).
 		Exec(ctx); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to touch login timestamps: user_id=%d err=%v", userID, err)
+	}
+
+	// 每日登录奖励（Asia/Shanghai 每天一次，幂等；best-effort，失败不影响登录）。
+	if s.lotteryService != nil {
+		if err := s.lotteryService.GrantLoginReward(ctx, userID, defaultLotteryLoginReward); err != nil {
+			logger.LegacyPrintf("service.auth", "[Lottery] Failed to grant login reward: user_id=%d err=%v", userID, err)
+		}
 	}
 }
 

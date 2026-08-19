@@ -1,0 +1,164 @@
+GPT Image Playground（CookSleep/gpt_image_playground）二开开发文档本文档基于官方仓库（MIT License，当前约 v0.7.x）整理，面向二次开发、对接 Sub2API、自定义服务商、功能扩展等场景。项目是纯前端为主（React + Vite），数据本地化（IndexedDB），可轻松对接任何 OpenAI 兼容网关（包括 Sub2API）。1. 项目概况与技术栈定位：基于 OpenAI gpt-image 系列（gpt-image-1 / gpt-image-2 等）的图片生成与编辑 Web UI。支持文生图、图生图、遮罩编辑、Agent 多轮对话、历史画廊、收藏夹等。
+核心优势：纯本地存储（隐私好）、参数精细控制、流式预览、自定义服务商 JSON 导入、URL 参数快速配置。
+技术栈：React 19 + TypeScript + Vite
+Tailwind CSS（样式）
+Zustand（状态管理，核心在 src/store.ts）
+IndexedDB（，带 SHA-256 去重）
+其他：Fabric.js（遮罩）、fflate（导出 ZIP）等
+
+包管理：必须使用 npm（有 package-lock.json），不要用 yarn / pnpm。
+许可证：MIT，可自由二开商用，建议保留原作者信息。
+
+官方仓库：https://github.com/CookSleep/gpt_image_playground
+在线体验：https://gpt-image-playground.cooksleep.dev 或 GitHub Pages 版本。2. 快速开始（本地开发）bash
+
+git clone https://github.com/CookSleep/gpt_image_playground.git
+cd gpt_image_playground
+npm install
+npm run dev
+
+访问 http://localhost:5173。可选配置：新建 ：
+
+VITE_DEFAULT_API_URL=https://你的-sub2api域名/v1
+
+跨域代理（本地调试 Sub2API 时常用）：bash
+
+cp dev-proxy.config.example.json dev-proxy.config.json
+
+编辑 target 为完整 Base URL（如 http://localhost:8080/v1 或你的 Sub2API 地址）。代理路径通常是 /api-proxy/。
+
+常用命令：操作
+命令
+安装依赖
+npm install
+开发服务器
+npm run dev
+构建
+npm run build
+测试
+ / npm run test:watch
+
+3. 项目结构（重点关注二开路径）
+
+src/
+├── App.tsx                 # 根组件
+├── main.tsx
+├── store.ts                # 核心 Zustand store（5000+ 行，修改需谨慎，注意持久化与数据迁移）
+├── types.ts                # 共享类型
+├── components/             # UI 组件
+│   ├── settings/           # 设置相关
+│   ├── input/              # 输入栏
+│   ├── favorites/          # 收藏夹
+│   ├── AgentWorkspace.tsx  # Agent 模式
+│   ├── MaskEditorModal.tsx # 遮罩编辑
+│   ├── TaskGrid.tsx / TaskCard.tsx  # 画廊
+│   ├── SettingsModal.tsx
+│   └── ...
+├── hooks/                  # 自定义 hooks
+└── lib/                    # 工具与核心逻辑（二开重点）
+    ├── api.ts / openaiCompatibleImageApi.ts / imageApiShared.ts  # API 调用
+    ├── apiProfiles.ts      # 多配置 / 服务商管理
+    ├── agentApi.ts / agent*.ts  # Agent 模式
+    ├── db.ts               # IndexedDB
+    ├── size.ts             # 尺寸规整算法
+    ├── mask.ts / maskPreprocess.ts
+    ├── customProviderConfigUrl.ts / settingsCustomProvider.ts
+    ├── urlSettings.ts      # URL 参数解析
+    ├── exportZip.ts
+    └── ...（大量单测配套）
+
+架构建议（来自官方 AGENTS.md）：新工具函数放 src/lib/，不要往 store.ts 塞过多逻辑。
+组件放 src/components/，hooks 放 src/hooks/。
+大功能优先拆模块（lib + hook + 组件）。
+store.ts 修改时注意：持久化中间件、normalize* 函数（向后兼容旧数据）、DB_VERSION 升级。
+
+4. 对接 Sub2API（最常见二开场景）Sub2API 已原生支持 /v1/images/generations 与 /v1/images/edits（同步 + 异步）。零代码对接方式（推荐）：Sub2API 后台添加 OpenAI 图片渠道，生成用户 API Key。
+在 Playground 设置页填写：API URL：https://你的-sub2api/v1（或内网地址）
+API Key：Sub2API 签发的 
+Model：对应模型名（如 gpt-image-1 / gpt-image-2）
+
+或直接用 URL 参数快速填充：
+
+https://你的-playground域名/?apiUrl=https://sub2api.example.com/v1&apiKey=sk-xxx&model=gpt-image-2
+
+深度二开建议：在 src/lib/defaultApiUrl.ts 或构建时注入默认 Sub2API 地址。
+Docker 部署时用环境变量 DEFAULT_API_URL / API_PROXY_URL。
+如需统一登录 / 额度展示：可在前端增加简单鉴权层，或 fork 后改成前后端一体（参考社区 XianYuDaXian / MokoYee 等带后端的 fork）。
+异步任务：Sub2API 支持 /v1/images/generations/async + 轮询，可按自定义服务商方式映射。
+
+5. 自定义服务商（非标准 OpenAI 接口）通过 JSON 导入即可（设置页有“导入”和“复制给 LLM”按钮）。结构核心：json
+
+{
+  "customProviders": [
+    {
+      "id": "custom-xxx",
+      "name": "名称",
+      "submit": { "path": "...", "method": "POST", "contentType": "json|multipart", "body": {...}, "result": {...}, "taskIdPath": "..." },
+      "editSubmit": { ... },
+      "poll": { "path": "tasks/{task_id}", "intervalSeconds": 5, "statusPath": "...", "successValues": [...], "result": {...} }
+    }
+  ],
+  "profiles": [
+    {
+      "name": "配置名",
+      "provider": "custom-xxx",
+      "baseUrl": "https://...",
+      "model": "...",
+      "apiMode": "images"
+    }
+  ]
+}
+
+ 等。
+详细示例与 LLM 提示词见官方 docs/custom-provider-llm-prompt.md变量支持：、、、、。6. 代码风格与开发规范（强制遵循官方 AGENTS.md）简单优先：能工作的最简代码，少抽象。
+完整实现：不要留 TODO / stub。
+格式：2 空格缩进、单引号、无分号、箭头函数始终加括号。
+命名：PascalCase（组件/类型）、camelCase（函数/变量）、UPPER_SNAKE_CASE（常量）、文件名小驼峰。
+TypeScript：优先 const、早返回、避免 any、利用推断。
+注释：中文，说明“为什么”。
+Import 顺序：React → 第三方 → 本地类型 → 本地模块。
+错误处理：网络 / 文件用 try/catch，console.warn/error。
+测试：改完后跑 npm run build + npm test。
+注意：store.ts 和 db.ts 改动需保持数据向后兼容。
+
+7. 部署方式（二开后常用）：静态构建，环境变量 。
+（官方镜像 ）：bash
+
+docker run -d -p 8080:80 \
+  -e DEFAULT_API_URL=https://your-sub2api/v1 \
+  -e ENABLE_API_PROXY=true \
+  ghcr.io/cooksleep/gpt_image_playground:latest
+
+自建静态：npm run build 后部署 dist/。
+带后端的社区 fork：可参考 XianYuDaXian 等（加了用户管理、队列、SQLite/PostgreSQL）。
+
+8. 常见二开方向与建议方向
+推荐改动位置
+注意点
+对接 Sub2API / 中转
+URL 参数 / 设置 / defaultApiUrl
+最简单，几乎零代码
+增加新服务商
+customProviders JSON + apiProfiles
+用官方 LLM 提示词生成
+UI / 主题修改
+components/ + Tailwind
+保持现有风格
+加登录 / 额度
+新增后端 或 改 store
+社区已有前后端一体 fork
+Agent 增强
+lib/agent*.ts
+上下文与分支逻辑复杂
+数据导出 / 同步
+lib/exportZip.ts / db.ts
+IndexedDB schema 升级需处理
+性能优化
+imageCache / TaskGrid
+已有瀑布流与去重
+
+建议流程：Fork 官方仓库。
+本地跑通 + 对接你的 Sub2API。
+小改动先提交 PR 或独立分支。
+大改时参考社区带后端的 fork，避免从零造轮子。
+保持与上游同步（官方更新较快）。

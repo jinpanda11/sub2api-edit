@@ -538,6 +538,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
+	// 每日盲盒抽奖
+	updates[SettingKeyLotteryEnabled] = strconv.FormatBool(settings.LotteryEnabled)
+	updates[SettingKeyLotteryMinAmount] = strconv.FormatFloat(settings.LotteryMinAmount, 'f', 8, 64)
+	updates[SettingKeyLotteryMaxAmount] = strconv.FormatFloat(settings.LotteryMaxAmount, 'f', 8, 64)
+	updates[SettingKeyLotteryRechargeUnit] = strconv.FormatFloat(settings.LotteryRechargeUnit, 'f', 8, 64)
+	updates[SettingKeyLotteryRechargeDailyMax] = strconv.Itoa(settings.LotteryRechargeDailyMax)
+	updates[SettingKeyLotteryLoginReward] = strconv.Itoa(settings.LotteryLoginReward)
+
+	// 每日消费排行榜
+	updates[SettingKeyConsumptionRankingEnabled] = strconv.FormatBool(settings.ConsumptionRankingEnabled)
+
 	return updates, nil
 }
 

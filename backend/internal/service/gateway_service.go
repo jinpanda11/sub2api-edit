@@ -763,6 +763,12 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	rankingService        *ConsumptionRankingService
+}
+
+// SetConsumptionRankingService 注入消费排行榜服务（wire 装配时调用，避免修改构造函数签名波及测试）。
+func (s *GatewayService) SetConsumptionRankingService(rankingService *ConsumptionRankingService) {
+	s.rankingService = rankingService
 }
 
 // NewGatewayService creates a new GatewayService

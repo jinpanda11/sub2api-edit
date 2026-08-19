@@ -27,6 +27,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/lotterychance"
+	"github.com/Wei-Shaw/sub2api/ent/lotteryrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -619,6 +621,60 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
 }
 
+// The LotteryChanceFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LotteryChanceFunc func(context.Context, *ent.LotteryChanceQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f LotteryChanceFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.LotteryChanceQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.LotteryChanceQuery", q)
+}
+
+// The TraverseLotteryChance type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLotteryChance func(context.Context, *ent.LotteryChanceQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLotteryChance) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLotteryChance) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.LotteryChanceQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.LotteryChanceQuery", q)
+}
+
+// The LotteryRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LotteryRecordFunc func(context.Context, *ent.LotteryRecordQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f LotteryRecordFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.LotteryRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.LotteryRecordQuery", q)
+}
+
+// The TraverseLotteryRecord type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLotteryRecord func(context.Context, *ent.LotteryRecordQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLotteryRecord) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLotteryRecord) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.LotteryRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.LotteryRecordQuery", q)
+}
+
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary function as a Querier.
 type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogQuery) (ent.Value, error)
 
@@ -1200,6 +1256,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.LotteryChanceQuery:
+		return &query[*ent.LotteryChanceQuery, predicate.LotteryChance, lotterychance.OrderOption]{typ: ent.TypeLotteryChance, tq: q}, nil
+	case *ent.LotteryRecordQuery:
+		return &query[*ent.LotteryRecordQuery, predicate.LotteryRecord, lotteryrecord.OrderOption]{typ: ent.TypeLotteryRecord, tq: q}, nil
 	case *ent.PaymentAuditLogQuery:
 		return &query[*ent.PaymentAuditLogQuery, predicate.PaymentAuditLog, paymentauditlog.OrderOption]{typ: ent.TypePaymentAuditLog, tq: q}, nil
 	case *ent.PaymentOrderQuery:

@@ -341,6 +341,17 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+
+	// 每日盲盒抽奖
+	LotteryEnabled          bool    `json:"lottery_enabled"`
+	LotteryMinAmount        float64 `json:"lottery_min_amount"`
+	LotteryMaxAmount        float64 `json:"lottery_max_amount"`
+	LotteryRechargeUnit     float64 `json:"lottery_recharge_unit"`
+	LotteryRechargeDailyMax int     `json:"lottery_recharge_daily_max"`
+	LotteryLoginReward      int     `json:"lottery_login_reward"`
+
+	// 每日消费排行榜
+	ConsumptionRankingEnabled bool `json:"consumption_ranking_enabled"`
 }
 
 type DefaultSubscriptionSetting struct {

@@ -34,6 +34,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/lotterychance"
+	"github.com/Wei-Shaw/sub2api/ent/lotteryrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -101,6 +103,10 @@ type Client struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// LotteryChance is the client for interacting with the LotteryChance builders.
+	LotteryChance *LotteryChanceClient
+	// LotteryRecord is the client for interacting with the LotteryRecord builders.
+	LotteryRecord *LotteryRecordClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -171,6 +177,8 @@ func (c *Client) init() {
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
+	c.LotteryChance = NewLotteryChanceClient(c.config)
+	c.LotteryRecord = NewLotteryRecordClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
@@ -302,6 +310,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		LotteryChance:                 NewLotteryChanceClient(cfg),
+		LotteryRecord:                 NewLotteryRecordClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
@@ -360,6 +370,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		LotteryChance:                 NewLotteryChanceClient(cfg),
+		LotteryRecord:                 NewLotteryRecordClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
@@ -414,12 +426,13 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.IdentityAdoptionDecision, c.LotteryChance, c.LotteryRecord,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -434,12 +447,13 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.IdentityAdoptionDecision, c.LotteryChance, c.LotteryRecord,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -486,6 +500,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *IdentityAdoptionDecisionMutation:
 		return c.IdentityAdoptionDecision.mutate(ctx, m)
+	case *LotteryChanceMutation:
+		return c.LotteryChance.mutate(ctx, m)
+	case *LotteryRecordMutation:
+		return c.LotteryRecord.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
 	case *PaymentOrderMutation:
@@ -3574,6 +3592,272 @@ func (c *IdentityAdoptionDecisionClient) mutate(ctx context.Context, m *Identity
 		return (&IdentityAdoptionDecisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdentityAdoptionDecision mutation op: %q", m.Op())
+	}
+}
+
+// LotteryChanceClient is a client for the LotteryChance schema.
+type LotteryChanceClient struct {
+	config
+}
+
+// NewLotteryChanceClient returns a client for the LotteryChance from the given config.
+func NewLotteryChanceClient(c config) *LotteryChanceClient {
+	return &LotteryChanceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `lotterychance.Hooks(f(g(h())))`.
+func (c *LotteryChanceClient) Use(hooks ...Hook) {
+	c.hooks.LotteryChance = append(c.hooks.LotteryChance, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `lotterychance.Intercept(f(g(h())))`.
+func (c *LotteryChanceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LotteryChance = append(c.inters.LotteryChance, interceptors...)
+}
+
+// Create returns a builder for creating a LotteryChance entity.
+func (c *LotteryChanceClient) Create() *LotteryChanceCreate {
+	mutation := newLotteryChanceMutation(c.config, OpCreate)
+	return &LotteryChanceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LotteryChance entities.
+func (c *LotteryChanceClient) CreateBulk(builders ...*LotteryChanceCreate) *LotteryChanceCreateBulk {
+	return &LotteryChanceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LotteryChanceClient) MapCreateBulk(slice any, setFunc func(*LotteryChanceCreate, int)) *LotteryChanceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LotteryChanceCreateBulk{err: fmt.Errorf("calling to LotteryChanceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LotteryChanceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LotteryChanceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LotteryChance.
+func (c *LotteryChanceClient) Update() *LotteryChanceUpdate {
+	mutation := newLotteryChanceMutation(c.config, OpUpdate)
+	return &LotteryChanceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LotteryChanceClient) UpdateOne(_m *LotteryChance) *LotteryChanceUpdateOne {
+	mutation := newLotteryChanceMutation(c.config, OpUpdateOne, withLotteryChance(_m))
+	return &LotteryChanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LotteryChanceClient) UpdateOneID(id int64) *LotteryChanceUpdateOne {
+	mutation := newLotteryChanceMutation(c.config, OpUpdateOne, withLotteryChanceID(id))
+	return &LotteryChanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LotteryChance.
+func (c *LotteryChanceClient) Delete() *LotteryChanceDelete {
+	mutation := newLotteryChanceMutation(c.config, OpDelete)
+	return &LotteryChanceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LotteryChanceClient) DeleteOne(_m *LotteryChance) *LotteryChanceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LotteryChanceClient) DeleteOneID(id int64) *LotteryChanceDeleteOne {
+	builder := c.Delete().Where(lotterychance.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LotteryChanceDeleteOne{builder}
+}
+
+// Query returns a query builder for LotteryChance.
+func (c *LotteryChanceClient) Query() *LotteryChanceQuery {
+	return &LotteryChanceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLotteryChance},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LotteryChance entity by its id.
+func (c *LotteryChanceClient) Get(ctx context.Context, id int64) (*LotteryChance, error) {
+	return c.Query().Where(lotterychance.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LotteryChanceClient) GetX(ctx context.Context, id int64) *LotteryChance {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LotteryChanceClient) Hooks() []Hook {
+	return c.hooks.LotteryChance
+}
+
+// Interceptors returns the client interceptors.
+func (c *LotteryChanceClient) Interceptors() []Interceptor {
+	return c.inters.LotteryChance
+}
+
+func (c *LotteryChanceClient) mutate(ctx context.Context, m *LotteryChanceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LotteryChanceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LotteryChanceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LotteryChanceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LotteryChanceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown LotteryChance mutation op: %q", m.Op())
+	}
+}
+
+// LotteryRecordClient is a client for the LotteryRecord schema.
+type LotteryRecordClient struct {
+	config
+}
+
+// NewLotteryRecordClient returns a client for the LotteryRecord from the given config.
+func NewLotteryRecordClient(c config) *LotteryRecordClient {
+	return &LotteryRecordClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `lotteryrecord.Hooks(f(g(h())))`.
+func (c *LotteryRecordClient) Use(hooks ...Hook) {
+	c.hooks.LotteryRecord = append(c.hooks.LotteryRecord, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `lotteryrecord.Intercept(f(g(h())))`.
+func (c *LotteryRecordClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LotteryRecord = append(c.inters.LotteryRecord, interceptors...)
+}
+
+// Create returns a builder for creating a LotteryRecord entity.
+func (c *LotteryRecordClient) Create() *LotteryRecordCreate {
+	mutation := newLotteryRecordMutation(c.config, OpCreate)
+	return &LotteryRecordCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LotteryRecord entities.
+func (c *LotteryRecordClient) CreateBulk(builders ...*LotteryRecordCreate) *LotteryRecordCreateBulk {
+	return &LotteryRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LotteryRecordClient) MapCreateBulk(slice any, setFunc func(*LotteryRecordCreate, int)) *LotteryRecordCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LotteryRecordCreateBulk{err: fmt.Errorf("calling to LotteryRecordClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LotteryRecordCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LotteryRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LotteryRecord.
+func (c *LotteryRecordClient) Update() *LotteryRecordUpdate {
+	mutation := newLotteryRecordMutation(c.config, OpUpdate)
+	return &LotteryRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LotteryRecordClient) UpdateOne(_m *LotteryRecord) *LotteryRecordUpdateOne {
+	mutation := newLotteryRecordMutation(c.config, OpUpdateOne, withLotteryRecord(_m))
+	return &LotteryRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LotteryRecordClient) UpdateOneID(id int64) *LotteryRecordUpdateOne {
+	mutation := newLotteryRecordMutation(c.config, OpUpdateOne, withLotteryRecordID(id))
+	return &LotteryRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LotteryRecord.
+func (c *LotteryRecordClient) Delete() *LotteryRecordDelete {
+	mutation := newLotteryRecordMutation(c.config, OpDelete)
+	return &LotteryRecordDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LotteryRecordClient) DeleteOne(_m *LotteryRecord) *LotteryRecordDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LotteryRecordClient) DeleteOneID(id int64) *LotteryRecordDeleteOne {
+	builder := c.Delete().Where(lotteryrecord.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LotteryRecordDeleteOne{builder}
+}
+
+// Query returns a query builder for LotteryRecord.
+func (c *LotteryRecordClient) Query() *LotteryRecordQuery {
+	return &LotteryRecordQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLotteryRecord},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LotteryRecord entity by its id.
+func (c *LotteryRecordClient) Get(ctx context.Context, id int64) (*LotteryRecord, error) {
+	return c.Query().Where(lotteryrecord.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LotteryRecordClient) GetX(ctx context.Context, id int64) *LotteryRecord {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LotteryRecordClient) Hooks() []Hook {
+	return c.hooks.LotteryRecord
+}
+
+// Interceptors returns the client interceptors.
+func (c *LotteryRecordClient) Interceptors() []Interceptor {
+	return c.inters.LotteryRecord
+}
+
+func (c *LotteryRecordClient) mutate(ctx context.Context, m *LotteryRecordMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LotteryRecordCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LotteryRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LotteryRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LotteryRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown LotteryRecord mutation op: %q", m.Op())
 	}
 }
 
@@ -6829,24 +7113,24 @@ type (
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		Group, IdempotencyRecord, IdentityAdoptionDecision, LotteryChance,
+		LotteryRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
+		PendingAuthSession, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		Group, IdempotencyRecord, IdentityAdoptionDecision, LotteryChance,
+		LotteryRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
+		PendingAuthSession, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

@@ -186,6 +186,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+  {
+    path: '/ranking',
+    name: 'ConsumptionRanking',
+    component: () => import('@/views/ConsumptionRankingView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Consumption Ranking',
+      titleKey: 'ranking.title',
+      descriptionKey: 'ranking.description'
+    }
+  },
+
   // ==================== User Routes ====================
   {
     path: '/',
@@ -250,6 +262,30 @@ const routes: RouteRecordRaw[] = [
       title: 'Redeem Code',
       titleKey: 'redeem.title',
       descriptionKey: 'redeem.description'
+    }
+  },
+  {
+    path: '/lottery',
+    name: 'Lottery',
+    component: () => import('@/views/user/LotteryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Daily Lottery',
+      titleKey: 'lottery.title',
+      descriptionKey: 'lottery.description'
+    }
+  },
+  {
+    path: '/draw',
+    name: 'ImagePlayground',
+    component: () => import('@/views/user/ImagePlaygroundView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'AI Drawing',
+      titleKey: 'imagePlayground.title',
+      descriptionKey: 'imagePlayground.description'
     }
   },
   {

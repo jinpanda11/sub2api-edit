@@ -968,6 +968,37 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
+	// 每日盲盒抽奖
+	result.LotteryEnabled = settings[SettingKeyLotteryEnabled] != "false" // 默认启用
+	if v, err := strconv.ParseFloat(settings[SettingKeyLotteryMinAmount], 64); err == nil && v > 0 {
+		result.LotteryMinAmount = v
+	} else {
+		result.LotteryMinAmount = defaultLotteryMinAmount
+	}
+	if v, err := strconv.ParseFloat(settings[SettingKeyLotteryMaxAmount], 64); err == nil && v > 0 {
+		result.LotteryMaxAmount = v
+	} else {
+		result.LotteryMaxAmount = defaultLotteryMaxAmount
+	}
+	if v, err := strconv.ParseFloat(settings[SettingKeyLotteryRechargeUnit], 64); err == nil && v > 0 {
+		result.LotteryRechargeUnit = v
+	} else {
+		result.LotteryRechargeUnit = defaultLotteryRechargeUnit
+	}
+	if v, err := strconv.Atoi(settings[SettingKeyLotteryRechargeDailyMax]); err == nil && v > 0 {
+		result.LotteryRechargeDailyMax = v
+	} else {
+		result.LotteryRechargeDailyMax = defaultLotteryRechargeDailyMax
+	}
+	if v, err := strconv.Atoi(settings[SettingKeyLotteryLoginReward]); err == nil && v > 0 {
+		result.LotteryLoginReward = v
+	} else {
+		result.LotteryLoginReward = defaultLotteryLoginReward
+	}
+
+	// 每日消费排行榜（默认启用）
+	result.ConsumptionRankingEnabled = settings[SettingKeyConsumptionRankingEnabled] != "false"
+
 	// Publish Grok default model_mapping options for accounts with empty mapping.
 	xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{
 		DefaultText:          result.GrokDefaultTextModel,

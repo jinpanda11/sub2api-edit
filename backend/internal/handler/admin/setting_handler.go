@@ -390,6 +390,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
+
+		LotteryEnabled:          settings.LotteryEnabled,
+		LotteryMinAmount:        settings.LotteryMinAmount,
+		LotteryMaxAmount:        settings.LotteryMaxAmount,
+		LotteryRechargeUnit:     settings.LotteryRechargeUnit,
+		LotteryRechargeDailyMax: settings.LotteryRechargeDailyMax,
+		LotteryLoginReward:      settings.LotteryLoginReward,
+
+		ConsumptionRankingEnabled: settings.ConsumptionRankingEnabled,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

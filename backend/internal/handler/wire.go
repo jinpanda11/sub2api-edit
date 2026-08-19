@@ -190,6 +190,8 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	lotteryHandler *LotteryHandler,
+	consumptionRankingHandler *ConsumptionRankingHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -215,6 +217,8 @@ func ProvideHandlers(
 		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		Lottery:          lotteryHandler,
+		ConsumptionRanking: consumptionRankingHandler,
 	}
 }
 
@@ -241,6 +245,8 @@ var ProviderSet = wire.NewSet(
 	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
+	NewLotteryHandler,
+	NewConsumptionRankingHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

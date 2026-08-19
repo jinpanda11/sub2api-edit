@@ -736,6 +736,17 @@ export interface SystemSettings {
 
   // Allow user view error requests
   allow_user_view_error_requests: boolean;
+
+  // Daily blind-box lottery
+  lottery_enabled: boolean;
+  lottery_min_amount: number;
+  lottery_max_amount: number;
+  lottery_recharge_unit: number;
+  lottery_recharge_daily_max: number;
+  lottery_login_reward: number;
+
+  // Daily consumption ranking
+  consumption_ranking_enabled: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -1034,6 +1045,17 @@ export interface UpdateSettingsRequest {
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
   allow_user_view_error_requests?: boolean;
+
+  // Daily blind-box lottery
+  lottery_enabled?: boolean;
+  lottery_min_amount?: number;
+  lottery_max_amount?: number;
+  lottery_recharge_unit?: number;
+  lottery_recharge_daily_max?: number;
+  lottery_login_reward?: number;
+
+  // Daily consumption ranking
+  consumption_ranking_enabled?: boolean;
 }
 
 /**
