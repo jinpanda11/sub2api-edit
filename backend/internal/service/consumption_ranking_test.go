@@ -3,20 +3,48 @@ package service
 import (
 	"context"
 	"database/sql"
-	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
-	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
 )
+
+// fakeRankingCache 内存版 ConsumptionRankingCache，用于单测。
+type fakeRankingCache struct {
+	warm       bool
+	scores     []ConsumptionRankingScore
+	increments []ConsumptionRankingScore
+}
+
+func (f *fakeRankingCache) IncrementToday(ctx context.Context, date string, userID int64, cost float64) error {
+	f.increments = append(f.increments, ConsumptionRankingScore{UserID: userID, Score: cost})
+	return nil
+}
+
+func (f *fakeRankingCache) IsWarm(ctx context.Context, date string) (bool, error) {
+	return f.warm, nil
+}
+
+func (f *fakeRankingCache) TopUsers(ctx context.Context, date string, limit int) ([]ConsumptionRankingScore, error) {
+	return f.scores, nil
+}
+
+func (f *fakeRankingCache) MarkWarm(ctx context.Context, date string) error {
+	f.warm = true
+	return nil
+}
+
+func (f *fakeRankingCache) WarmSet(ctx context.Context, date string, scores []ConsumptionRankingScore) error {
+	f.scores = scores
+	f.warm = true
+	return nil
+}
 
 func TestMaskRankingEmail(t *testing.T) {
 	cases := []struct {
@@ -43,12 +71,9 @@ func TestRound4(t *testing.T) {
 	require.Equal(t, 0.0, round4(0.00001))
 }
 
-func newRankingTestEnv(t *testing.T) (*ConsumptionRankingService, *miniredis.Miniredis) {
+func newRankingTestEnv(t *testing.T) (*ConsumptionRankingService, *fakeRankingCache) {
 	t.Helper()
-	mr := miniredis.RunT(t)
-
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rdb.Close() })
+	cache := &fakeRankingCache{}
 
 	// sqlite ent client 仅用于 fetchEmails（用户邮箱批量查询）。
 	db, err := sql.Open("sqlite", "file:consumption_ranking_test?mode=memory&cache=shared")
@@ -59,7 +84,7 @@ func newRankingTestEnv(t *testing.T) (*ConsumptionRankingService, *miniredis.Min
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
 	t.Cleanup(func() { _ = client.Close() })
 
-	return NewConsumptionRankingService(client, rdb, nil), mr
+	return NewConsumptionRankingService(client, cache, nil), cache
 }
 
 func mustInsertRankingUser(t *testing.T, ctx context.Context, client *dbent.Client, email string) int64 {
@@ -74,25 +99,23 @@ func mustInsertRankingUser(t *testing.T, ctx context.Context, client *dbent.Clie
 	return u.ID
 }
 
-func TestGetToday_FromWarmRedis(t *testing.T) {
-	svc, mr := newRankingTestEnv(t)
+func TestGetToday_FromWarmCache(t *testing.T) {
+	svc, cache := newRankingTestEnv(t)
 	ctx := context.Background()
 
 	userA := mustInsertRankingUser(t, ctx, svc.entClient, "ab123456cd@qq.com")
 	userB := mustInsertRankingUser(t, ctx, svc.entClient, "testuser@example.com")
-	date := shanghaiDateStr(time.Now())
 
-	// 预置 Redis：warm 标记 + 两个用户的分数
-	key := rankingRedisKey(date)
-	_, err := mr.ZAdd(key, 128.4567, int64ToStr(userA))
-	require.NoError(t, err)
-	_, err = mr.ZAdd(key, 95.32, int64ToStr(userB))
-	require.NoError(t, err)
-	_ = mr.Set(rankingWarmKey(date), "1")
+	// 预置缓存：warm 标记 + 两个用户的分数
+	cache.warm = true
+	cache.scores = []ConsumptionRankingScore{
+		{UserID: userA, Score: 128.4567},
+		{UserID: userB, Score: 95.32},
+	}
 
 	resp, err := svc.GetToday(ctx)
 	require.NoError(t, err)
-	require.Equal(t, date, resp.Date)
+	require.Equal(t, shanghaiDateStr(time.Now()), resp.Date)
 	require.Len(t, resp.List, 2)
 	require.Equal(t, 1, resp.List[0].Rank)
 	require.Equal(t, "ab******cd@qq.com", resp.List[0].MaskedEmail)
@@ -102,19 +125,19 @@ func TestGetToday_FromWarmRedis(t *testing.T) {
 	require.Equal(t, 95.32, resp.List[1].Amount)
 }
 
-func TestIncrementAsync_ZIncrBy(t *testing.T) {
-	svc, mr := newRankingTestEnv(t)
+func TestIncrementAsync_AccumulatesInCache(t *testing.T) {
+	svc, cache := newRankingTestEnv(t)
 	userID := int64(42)
-	key := rankingRedisKey(shanghaiDateStr(time.Now()))
 
 	svc.IncrementAsync(userID, 1.25)
 	svc.IncrementAsync(userID, 0.75)
 	require.Eventually(t, func() bool {
-		score, _ := mr.ZScore(key, int64ToStr(userID))
-		return score == 2.0
+		var total float64
+		for _, inc := range cache.increments {
+			if inc.UserID == userID {
+				total += inc.Score
+			}
+		}
+		return total == 2.0
 	}, 2*time.Second, 10*time.Millisecond)
-}
-
-func int64ToStr(v int64) string {
-	return strconv.FormatInt(v, 10)
 }

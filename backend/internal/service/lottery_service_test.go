@@ -19,11 +19,11 @@ import (
 // ---------- fake repositories ----------
 
 type fakeChanceRepo struct {
-	row             *LotteryChance
-	grantsLogin     int
-	grantsRecharge  int
-	consumed        int
-	rechargeEarned  []int
+	row            *LotteryChance
+	grantsLogin    int
+	grantsRecharge int
+	consumed       int
+	rechargeEarned []int
 }
 
 func (f *fakeChanceRepo) GetOrCreate(ctx context.Context, userID int64) (*LotteryChance, error) {
@@ -178,7 +178,8 @@ func TestUniformPrizeStaysInRangeAndRoundsToCents(t *testing.T) {
 
 func TestGrantLoginReward_OncePerShanghaiDay(t *testing.T) {
 	svc := newTestLotteryService(nil, nil, nil, nil)
-	chanceRepo := svc.chanceRepo.(*fakeChanceRepo)
+	chanceRepo, ok := svc.chanceRepo.(*fakeChanceRepo)
+	require.True(t, ok)
 
 	require.NoError(t, svc.GrantLoginReward(context.Background(), 1, 1))
 	require.Equal(t, 1, chanceRepo.row.AvailableCount)
@@ -191,7 +192,8 @@ func TestGrantLoginReward_OncePerShanghaiDay(t *testing.T) {
 
 func TestGrantRechargeReward_FloorAndDailyCap(t *testing.T) {
 	svc := newTestLotteryService(nil, nil, nil, nil)
-	chanceRepo := svc.chanceRepo.(*fakeChanceRepo)
+	chanceRepo, ok := svc.chanceRepo.(*fakeChanceRepo)
+	require.True(t, ok)
 
 	// 充值 25 → floor(25/10)=2
 	require.NoError(t, svc.GrantRechargeReward(context.Background(), 1, 25))
@@ -215,7 +217,8 @@ func TestGrantRechargeReward_FloorAndDailyCap(t *testing.T) {
 
 func TestGrantRechargeReward_DailyBucketResetsOnShanghaiDateChange(t *testing.T) {
 	svc := newTestLotteryService(nil, nil, nil, nil)
-	chanceRepo := svc.chanceRepo.(*fakeChanceRepo)
+	chanceRepo, ok := svc.chanceRepo.(*fakeChanceRepo)
+	require.True(t, ok)
 
 	require.NoError(t, svc.GrantRechargeReward(context.Background(), 1, 60))
 	require.Equal(t, 5, chanceRepo.row.AvailableCount)

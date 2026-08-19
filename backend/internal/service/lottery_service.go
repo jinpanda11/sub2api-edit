@@ -12,8 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-
-	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -117,6 +115,11 @@ type DrawResult struct {
 	RemainingCount int     `json:"remaining_count"`
 }
 
+// LotteryDrawLimiter 抽奖接口防刷限流（1 次/秒），由 repository 层基于 Redis 实现。
+type LotteryDrawLimiter interface {
+	TryAcquireDrawToken(ctx context.Context, userID int64) bool
+}
+
 // LotteryService 每日盲盒抽奖服务。
 type LotteryService struct {
 	entClient           *dbent.Client
@@ -125,7 +128,7 @@ type LotteryService struct {
 	recordRepo          LotteryRecordRepository
 	settingRepo         SettingRepository
 	billingCacheService *BillingCacheService
-	rdb                 *redis.Client
+	drawLimiter         LotteryDrawLimiter
 }
 
 // NewLotteryService 创建 LotteryService。
@@ -136,7 +139,7 @@ func NewLotteryService(
 	recordRepo LotteryRecordRepository,
 	settingRepo SettingRepository,
 	billingCacheService *BillingCacheService,
-	rdb *redis.Client,
+	drawLimiter LotteryDrawLimiter,
 ) *LotteryService {
 	return &LotteryService{
 		entClient:           entClient,
@@ -145,7 +148,7 @@ func NewLotteryService(
 		recordRepo:          recordRepo,
 		settingRepo:         settingRepo,
 		billingCacheService: billingCacheService,
-		rdb:                 rdb,
+		drawLimiter:         drawLimiter,
 	}
 }
 
@@ -402,14 +405,10 @@ func (s *LotteryService) ensureLoginReward(ctx context.Context, userID int64, cf
 
 // acquireDrawToken Redis SetNX 实现 1 次/秒限流；Redis 不可用时放行。
 func (s *LotteryService) acquireDrawToken(ctx context.Context, userID int64) bool {
-	if s.rdb == nil {
+	if s.drawLimiter == nil {
 		return true
 	}
-	ok, err := s.rdb.SetNX(ctx, fmt.Sprintf("lottery:draw:%d", userID), 1, time.Second).Result()
-	if err != nil {
-		return true
-	}
-	return ok
+	return s.drawLimiter.TryAcquireDrawToken(ctx, userID)
 }
 
 // invalidateBalanceCache 失效用户余额缓存（best-effort）。
