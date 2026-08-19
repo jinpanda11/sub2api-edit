@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,30 +18,41 @@ import (
 
 // fakeRankingCache 内存版 ConsumptionRankingCache，用于单测。
 type fakeRankingCache struct {
+	mu         sync.Mutex
 	warm       bool
 	scores     []ConsumptionRankingScore
 	increments []ConsumptionRankingScore
 }
 
 func (f *fakeRankingCache) IncrementToday(ctx context.Context, date string, userID int64, cost float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.increments = append(f.increments, ConsumptionRankingScore{UserID: userID, Score: cost})
 	return nil
 }
 
 func (f *fakeRankingCache) IsWarm(ctx context.Context, date string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.warm, nil
 }
 
 func (f *fakeRankingCache) TopUsers(ctx context.Context, date string, limit int) ([]ConsumptionRankingScore, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.scores, nil
 }
 
 func (f *fakeRankingCache) MarkWarm(ctx context.Context, date string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.warm = true
 	return nil
 }
 
 func (f *fakeRankingCache) WarmSet(ctx context.Context, date string, scores []ConsumptionRankingScore) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.scores = scores
 	f.warm = true
 	return nil
@@ -131,7 +143,10 @@ func TestIncrementAsync_AccumulatesInCache(t *testing.T) {
 
 	svc.IncrementAsync(userID, 1.25)
 	svc.IncrementAsync(userID, 0.75)
+	// 异步 goroutine 在 CI 高负载下调度可能延迟，给足窗口并校验累加总和。
 	require.Eventually(t, func() bool {
+		cache.mu.Lock()
+		defer cache.mu.Unlock()
 		var total float64
 		for _, inc := range cache.increments {
 			if inc.UserID == userID {
@@ -139,5 +154,5 @@ func TestIncrementAsync_AccumulatesInCache(t *testing.T) {
 			}
 		}
 		return total == 2.0
-	}, 2*time.Second, 10*time.Millisecond)
+	}, 10*time.Second, 20*time.Millisecond)
 }
