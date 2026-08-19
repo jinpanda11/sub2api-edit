@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"
@@ -84,9 +84,11 @@ func TestGetToday_FromWarmRedis(t *testing.T) {
 
 	// 预置 Redis：warm 标记 + 两个用户的分数
 	key := rankingRedisKey(date)
-	mr.ZAdd(key, 128.4567, int64ToStr(userA))
-	mr.ZAdd(key, 95.32, int64ToStr(userB))
-	mr.Set(rankingWarmKey(date), "1")
+	_, err := mr.ZAdd(key, 128.4567, int64ToStr(userA))
+	require.NoError(t, err)
+	_, err = mr.ZAdd(key, 95.32, int64ToStr(userB))
+	require.NoError(t, err)
+	_ = mr.Set(rankingWarmKey(date), "1")
 
 	resp, err := svc.GetToday(ctx)
 	require.NoError(t, err)
