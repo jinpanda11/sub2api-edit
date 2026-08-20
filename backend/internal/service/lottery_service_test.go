@@ -382,8 +382,8 @@ var _ SettingRepository = (*lotteryTestSettingRepo)(nil)
 func TestAdminDailyStats_AggregatesAndFillsZeros(t *testing.T) {
 	from, _ := time.ParseInLocation("2006-01-02", "2026-08-17", shanghaiLoc)
 	records := []LotteryRecord{
-		{UserID: 1, Amount: 1.00, CreatedAt: from.Add(10 * time.Hour)},              // 08-17 user1
-		{UserID: 1, Amount: 2.00, CreatedAt: from.Add(11 * time.Hour)},              // 08-17 user1（同日多次）
+		{UserID: 1, Amount: 1.00, CreatedAt: from.Add(10 * time.Hour)},                 // 08-17 user1
+		{UserID: 1, Amount: 2.00, CreatedAt: from.Add(11 * time.Hour)},                 // 08-17 user1（同日多次）
 		{UserID: 2, Amount: 0.50, CreatedAt: from.AddDate(0, 0, 1).Add(5 * time.Hour)}, // 08-18 user2
 		{UserID: 2, Amount: 1.50, CreatedAt: from.AddDate(0, 0, 3).Add(5 * time.Hour)}, // 08-20 user2
 	}
