@@ -597,6 +597,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/lottery',
+    name: 'AdminLottery',
+    component: () => import('@/views/admin/LotteryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Daily Lottery Statistics',
+      titleKey: 'admin.lottery.title',
+      descriptionKey: 'admin.lottery.description'
+    }
+  },
+  {
     path: '/admin/promo-codes',
     name: 'AdminPromoCodes',
     component: () => import('@/views/admin/PromoCodesView.vue'),

@@ -44,7 +44,7 @@ export default {
     drawingDisabled: 'Drawing is disabled',
     errorNoChances: 'No chances available — recharge to get more',
     errorRateLimit: 'Drawing too frequently, please try again',
-    timezoneNote: 'All daily limits reset at 00:00 Asia/Shanghai (UTC+8). Unused chances carry over.',
+    timezoneNote: 'Daily chances reset at 00:00 Asia/Shanghai (UTC+8). Unused chances do not carry over.',
     loadingFailed: 'Failed to load lottery status'
   }
 }

@@ -599,4 +599,28 @@ export default {
     },
 
     // Ops Monitoring
+
+    // Daily Lottery Statistics
+    lottery: {
+      title: '每日抽奖统计',
+      description: '按天查看每日盲盒抽奖的参与人数、抽奖次数与发放金额',
+      summary: '区间汇总',
+      startDate: '开始日期',
+      endDate: '结束日期',
+      totalDraws: '抽奖次数',
+      totalParticipants: '参与人数',
+      totalAmount: '发放金额',
+      avgAmount: '平均中奖金额',
+      date: '日期',
+      draws: '抽奖次数',
+      participants: '参与人数',
+      amount: '发放金额',
+      averageAmount: '平均金额',
+      timezone: '统计时区',
+      timezoneValue: 'Asia/Shanghai',
+      noData: '该区间暂无抽奖数据',
+      loadFailed: '加载抽奖统计失败',
+      query: '查询',
+      days30: '近30天'
+    }
 }

@@ -35,7 +35,7 @@ func (LotteryChance) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id").
 			Unique(),
-		// 当前可用次数：跨天保留，无上限，仅抽奖消耗。
+		// 当前可用次数：仅限当前上海自然日内有效，跨天清零，不保留未使用次数。
 		field.Int("available_count").
 			Default(0),
 		// 今日（Asia/Shanghai）已通过充值/兑换码来源获得的次数（0 ~ recharge_daily_max）。
@@ -51,6 +51,11 @@ func (LotteryChance) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			MaxLen(10),
+		// available_count 所归属的上海自然日（YYYY-MM-DD），用于跨天时清空未使用次数。
+		field.String("count_date").
+			Optional().
+			Nillable().
+			MaxLen(10),
 	}
 }
 
@@ -63,5 +68,6 @@ func (LotteryChance) Indexes() []ent.Index {
 		// user_id 已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("recharge_date"),
 		index.Fields("last_login_date"),
+		index.Fields("count_date"),
 	}
 }

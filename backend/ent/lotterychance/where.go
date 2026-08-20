@@ -89,6 +89,11 @@ func LastLoginDate(v string) predicate.LotteryChance {
 	return predicate.LotteryChance(sql.FieldEQ(FieldLastLoginDate, v))
 }
 
+// CountDate applies equality check predicate on the "count_date" field. It's identical to CountDateEQ.
+func CountDate(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldEQ(FieldCountDate, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.LotteryChance {
 	return predicate.LotteryChance(sql.FieldEQ(FieldCreatedAt, v))
@@ -437,6 +442,81 @@ func LastLoginDateEqualFold(v string) predicate.LotteryChance {
 // LastLoginDateContainsFold applies the ContainsFold predicate on the "last_login_date" field.
 func LastLoginDateContainsFold(v string) predicate.LotteryChance {
 	return predicate.LotteryChance(sql.FieldContainsFold(FieldLastLoginDate, v))
+}
+
+// CountDateEQ applies the EQ predicate on the "count_date" field.
+func CountDateEQ(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldEQ(FieldCountDate, v))
+}
+
+// CountDateNEQ applies the NEQ predicate on the "count_date" field.
+func CountDateNEQ(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldNEQ(FieldCountDate, v))
+}
+
+// CountDateIn applies the In predicate on the "count_date" field.
+func CountDateIn(vs ...string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldIn(FieldCountDate, vs...))
+}
+
+// CountDateNotIn applies the NotIn predicate on the "count_date" field.
+func CountDateNotIn(vs ...string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldNotIn(FieldCountDate, vs...))
+}
+
+// CountDateGT applies the GT predicate on the "count_date" field.
+func CountDateGT(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldGT(FieldCountDate, v))
+}
+
+// CountDateGTE applies the GTE predicate on the "count_date" field.
+func CountDateGTE(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldGTE(FieldCountDate, v))
+}
+
+// CountDateLT applies the LT predicate on the "count_date" field.
+func CountDateLT(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldLT(FieldCountDate, v))
+}
+
+// CountDateLTE applies the LTE predicate on the "count_date" field.
+func CountDateLTE(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldLTE(FieldCountDate, v))
+}
+
+// CountDateContains applies the Contains predicate on the "count_date" field.
+func CountDateContains(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldContains(FieldCountDate, v))
+}
+
+// CountDateHasPrefix applies the HasPrefix predicate on the "count_date" field.
+func CountDateHasPrefix(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldHasPrefix(FieldCountDate, v))
+}
+
+// CountDateHasSuffix applies the HasSuffix predicate on the "count_date" field.
+func CountDateHasSuffix(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldHasSuffix(FieldCountDate, v))
+}
+
+// CountDateIsNil applies the IsNil predicate on the "count_date" field.
+func CountDateIsNil() predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldIsNull(FieldCountDate))
+}
+
+// CountDateNotNil applies the NotNil predicate on the "count_date" field.
+func CountDateNotNil() predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldNotNull(FieldCountDate))
+}
+
+// CountDateEqualFold applies the EqualFold predicate on the "count_date" field.
+func CountDateEqualFold(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldEqualFold(FieldCountDate, v))
+}
+
+// CountDateContainsFold applies the ContainsFold predicate on the "count_date" field.
+func CountDateContainsFold(v string) predicate.LotteryChance {
+	return predicate.LotteryChance(sql.FieldContainsFold(FieldCountDate, v))
 }
 
 // And groups predicates with the AND operator between them.

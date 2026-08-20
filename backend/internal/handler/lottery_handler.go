@@ -78,3 +78,18 @@ func (h *LotteryHandler) GetRecords(c *gin.Context) {
 		Pages:    result.Pages,
 	})
 }
+
+// GetAdminDailyStats 管理员查看每日抽奖统计（按上海自然日）。
+// GET /api/v1/admin/lottery/stats
+// 可选 query：start_date / end_date（YYYY-MM-DD，Asia/Shanghai），默认最近 30 天。
+func (h *LotteryHandler) GetAdminDailyStats(c *gin.Context) {
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	stats, err := h.lotteryService.AdminDailyStats(c.Request.Context(), startDate, endDate)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
+}

@@ -44,7 +44,7 @@ export default {
     drawingDisabled: '抽奖功能已关闭',
     errorNoChances: '暂无抽奖次数，去充值获得更多次数',
     errorRateLimit: '操作太频繁，请稍后再试',
-    timezoneNote: '所有每日限制于北京时间（Asia/Shanghai）00:00 重置，未使用次数跨天保留。',
+    timezoneNote: '每日抽奖次数于北京时间（Asia/Shanghai）00:00 清零重置，未使用的次数不跨天保留。',
     loadingFailed: '加载抽奖状态失败'
   }
 }

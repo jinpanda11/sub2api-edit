@@ -137,6 +137,26 @@ func (_u *LotteryChanceUpdate) ClearLastLoginDate() *LotteryChanceUpdate {
 	return _u
 }
 
+// SetCountDate sets the "count_date" field.
+func (_u *LotteryChanceUpdate) SetCountDate(v string) *LotteryChanceUpdate {
+	_u.mutation.SetCountDate(v)
+	return _u
+}
+
+// SetNillableCountDate sets the "count_date" field if the given value is not nil.
+func (_u *LotteryChanceUpdate) SetNillableCountDate(v *string) *LotteryChanceUpdate {
+	if v != nil {
+		_u.SetCountDate(*v)
+	}
+	return _u
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (_u *LotteryChanceUpdate) ClearCountDate() *LotteryChanceUpdate {
+	_u.mutation.ClearCountDate()
+	return _u
+}
+
 // Mutation returns the LotteryChanceMutation object of the builder.
 func (_u *LotteryChanceUpdate) Mutation() *LotteryChanceMutation {
 	return _u.mutation
@@ -190,6 +210,11 @@ func (_u *LotteryChanceUpdate) check() error {
 			return &ValidationError{Name: "last_login_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.last_login_date": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CountDate(); ok {
+		if err := lotterychance.CountDateValidator(v); err != nil {
+			return &ValidationError{Name: "count_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.count_date": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -237,6 +262,12 @@ func (_u *LotteryChanceUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.LastLoginDateCleared() {
 		_spec.ClearField(lotterychance.FieldLastLoginDate, field.TypeString)
+	}
+	if value, ok := _u.mutation.CountDate(); ok {
+		_spec.SetField(lotterychance.FieldCountDate, field.TypeString, value)
+	}
+	if _u.mutation.CountDateCleared() {
+		_spec.ClearField(lotterychance.FieldCountDate, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -367,6 +398,26 @@ func (_u *LotteryChanceUpdateOne) ClearLastLoginDate() *LotteryChanceUpdateOne {
 	return _u
 }
 
+// SetCountDate sets the "count_date" field.
+func (_u *LotteryChanceUpdateOne) SetCountDate(v string) *LotteryChanceUpdateOne {
+	_u.mutation.SetCountDate(v)
+	return _u
+}
+
+// SetNillableCountDate sets the "count_date" field if the given value is not nil.
+func (_u *LotteryChanceUpdateOne) SetNillableCountDate(v *string) *LotteryChanceUpdateOne {
+	if v != nil {
+		_u.SetCountDate(*v)
+	}
+	return _u
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (_u *LotteryChanceUpdateOne) ClearCountDate() *LotteryChanceUpdateOne {
+	_u.mutation.ClearCountDate()
+	return _u
+}
+
 // Mutation returns the LotteryChanceMutation object of the builder.
 func (_u *LotteryChanceUpdateOne) Mutation() *LotteryChanceMutation {
 	return _u.mutation
@@ -433,6 +484,11 @@ func (_u *LotteryChanceUpdateOne) check() error {
 			return &ValidationError{Name: "last_login_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.last_login_date": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CountDate(); ok {
+		if err := lotterychance.CountDateValidator(v); err != nil {
+			return &ValidationError{Name: "count_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.count_date": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -497,6 +553,12 @@ func (_u *LotteryChanceUpdateOne) sqlSave(ctx context.Context) (_node *LotteryCh
 	}
 	if _u.mutation.LastLoginDateCleared() {
 		_spec.ClearField(lotterychance.FieldLastLoginDate, field.TypeString)
+	}
+	if value, ok := _u.mutation.CountDate(); ok {
+		_spec.SetField(lotterychance.FieldCountDate, field.TypeString, value)
+	}
+	if _u.mutation.CountDateCleared() {
+		_spec.ClearField(lotterychance.FieldCountDate, field.TypeString)
 	}
 	_node = &LotteryChance{config: _u.config}
 	_spec.Assign = _node.assignValues

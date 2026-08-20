@@ -29360,6 +29360,7 @@ type LotteryChanceMutation struct {
 	addtoday_recharge_count *int
 	recharge_date           *string
 	last_login_date         *string
+	count_date              *string
 	clearedFields           map[string]struct{}
 	done                    bool
 	oldValue                func(context.Context) (*LotteryChance, error)
@@ -29802,6 +29803,55 @@ func (m *LotteryChanceMutation) ResetLastLoginDate() {
 	delete(m.clearedFields, lotterychance.FieldLastLoginDate)
 }
 
+// SetCountDate sets the "count_date" field.
+func (m *LotteryChanceMutation) SetCountDate(s string) {
+	m.count_date = &s
+}
+
+// CountDate returns the value of the "count_date" field in the mutation.
+func (m *LotteryChanceMutation) CountDate() (r string, exists bool) {
+	v := m.count_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCountDate returns the old "count_date" field's value of the LotteryChance entity.
+// If the LotteryChance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LotteryChanceMutation) OldCountDate(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCountDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCountDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCountDate: %w", err)
+	}
+	return oldValue.CountDate, nil
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (m *LotteryChanceMutation) ClearCountDate() {
+	m.count_date = nil
+	m.clearedFields[lotterychance.FieldCountDate] = struct{}{}
+}
+
+// CountDateCleared returns if the "count_date" field was cleared in this mutation.
+func (m *LotteryChanceMutation) CountDateCleared() bool {
+	_, ok := m.clearedFields[lotterychance.FieldCountDate]
+	return ok
+}
+
+// ResetCountDate resets all changes to the "count_date" field.
+func (m *LotteryChanceMutation) ResetCountDate() {
+	m.count_date = nil
+	delete(m.clearedFields, lotterychance.FieldCountDate)
+}
+
 // Where appends a list predicates to the LotteryChanceMutation builder.
 func (m *LotteryChanceMutation) Where(ps ...predicate.LotteryChance) {
 	m.predicates = append(m.predicates, ps...)
@@ -29836,7 +29886,7 @@ func (m *LotteryChanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *LotteryChanceMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, lotterychance.FieldCreatedAt)
 	}
@@ -29857,6 +29907,9 @@ func (m *LotteryChanceMutation) Fields() []string {
 	}
 	if m.last_login_date != nil {
 		fields = append(fields, lotterychance.FieldLastLoginDate)
+	}
+	if m.count_date != nil {
+		fields = append(fields, lotterychance.FieldCountDate)
 	}
 	return fields
 }
@@ -29880,6 +29933,8 @@ func (m *LotteryChanceMutation) Field(name string) (ent.Value, bool) {
 		return m.RechargeDate()
 	case lotterychance.FieldLastLoginDate:
 		return m.LastLoginDate()
+	case lotterychance.FieldCountDate:
+		return m.CountDate()
 	}
 	return nil, false
 }
@@ -29903,6 +29958,8 @@ func (m *LotteryChanceMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldRechargeDate(ctx)
 	case lotterychance.FieldLastLoginDate:
 		return m.OldLastLoginDate(ctx)
+	case lotterychance.FieldCountDate:
+		return m.OldCountDate(ctx)
 	}
 	return nil, fmt.Errorf("unknown LotteryChance field %s", name)
 }
@@ -29960,6 +30017,13 @@ func (m *LotteryChanceMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastLoginDate(v)
+		return nil
+	case lotterychance.FieldCountDate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCountDate(v)
 		return nil
 	}
 	return fmt.Errorf("unknown LotteryChance field %s", name)
@@ -30036,6 +30100,9 @@ func (m *LotteryChanceMutation) ClearedFields() []string {
 	if m.FieldCleared(lotterychance.FieldLastLoginDate) {
 		fields = append(fields, lotterychance.FieldLastLoginDate)
 	}
+	if m.FieldCleared(lotterychance.FieldCountDate) {
+		fields = append(fields, lotterychance.FieldCountDate)
+	}
 	return fields
 }
 
@@ -30055,6 +30122,9 @@ func (m *LotteryChanceMutation) ClearField(name string) error {
 		return nil
 	case lotterychance.FieldLastLoginDate:
 		m.ClearLastLoginDate()
+		return nil
+	case lotterychance.FieldCountDate:
+		m.ClearCountDate()
 		return nil
 	}
 	return fmt.Errorf("unknown LotteryChance nullable field %s", name)
@@ -30084,6 +30154,9 @@ func (m *LotteryChanceMutation) ResetField(name string) error {
 		return nil
 	case lotterychance.FieldLastLoginDate:
 		m.ResetLastLoginDate()
+		return nil
+	case lotterychance.FieldCountDate:
+		m.ResetCountDate()
 		return nil
 	}
 	return fmt.Errorf("unknown LotteryChance field %s", name)

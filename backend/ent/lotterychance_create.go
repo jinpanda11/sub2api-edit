@@ -112,6 +112,20 @@ func (_c *LotteryChanceCreate) SetNillableLastLoginDate(v *string) *LotteryChanc
 	return _c
 }
 
+// SetCountDate sets the "count_date" field.
+func (_c *LotteryChanceCreate) SetCountDate(v string) *LotteryChanceCreate {
+	_c.mutation.SetCountDate(v)
+	return _c
+}
+
+// SetNillableCountDate sets the "count_date" field if the given value is not nil.
+func (_c *LotteryChanceCreate) SetNillableCountDate(v *string) *LotteryChanceCreate {
+	if v != nil {
+		_c.SetCountDate(*v)
+	}
+	return _c
+}
+
 // Mutation returns the LotteryChanceMutation object of the builder.
 func (_c *LotteryChanceCreate) Mutation() *LotteryChanceMutation {
 	return _c.mutation
@@ -192,6 +206,11 @@ func (_c *LotteryChanceCreate) check() error {
 			return &ValidationError{Name: "last_login_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.last_login_date": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.CountDate(); ok {
+		if err := lotterychance.CountDateValidator(v); err != nil {
+			return &ValidationError{Name: "count_date", err: fmt.Errorf(`ent: validator failed for field "LotteryChance.count_date": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -246,6 +265,10 @@ func (_c *LotteryChanceCreate) createSpec() (*LotteryChance, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.LastLoginDate(); ok {
 		_spec.SetField(lotterychance.FieldLastLoginDate, field.TypeString, value)
 		_node.LastLoginDate = &value
+	}
+	if value, ok := _c.mutation.CountDate(); ok {
+		_spec.SetField(lotterychance.FieldCountDate, field.TypeString, value)
+		_node.CountDate = &value
 	}
 	return _node, _spec
 }
@@ -398,6 +421,24 @@ func (u *LotteryChanceUpsert) UpdateLastLoginDate() *LotteryChanceUpsert {
 // ClearLastLoginDate clears the value of the "last_login_date" field.
 func (u *LotteryChanceUpsert) ClearLastLoginDate() *LotteryChanceUpsert {
 	u.SetNull(lotterychance.FieldLastLoginDate)
+	return u
+}
+
+// SetCountDate sets the "count_date" field.
+func (u *LotteryChanceUpsert) SetCountDate(v string) *LotteryChanceUpsert {
+	u.Set(lotterychance.FieldCountDate, v)
+	return u
+}
+
+// UpdateCountDate sets the "count_date" field to the value that was provided on create.
+func (u *LotteryChanceUpsert) UpdateCountDate() *LotteryChanceUpsert {
+	u.SetExcluded(lotterychance.FieldCountDate)
+	return u
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (u *LotteryChanceUpsert) ClearCountDate() *LotteryChanceUpsert {
+	u.SetNull(lotterychance.FieldCountDate)
 	return u
 }
 
@@ -562,6 +603,27 @@ func (u *LotteryChanceUpsertOne) UpdateLastLoginDate() *LotteryChanceUpsertOne {
 func (u *LotteryChanceUpsertOne) ClearLastLoginDate() *LotteryChanceUpsertOne {
 	return u.Update(func(s *LotteryChanceUpsert) {
 		s.ClearLastLoginDate()
+	})
+}
+
+// SetCountDate sets the "count_date" field.
+func (u *LotteryChanceUpsertOne) SetCountDate(v string) *LotteryChanceUpsertOne {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.SetCountDate(v)
+	})
+}
+
+// UpdateCountDate sets the "count_date" field to the value that was provided on create.
+func (u *LotteryChanceUpsertOne) UpdateCountDate() *LotteryChanceUpsertOne {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.UpdateCountDate()
+	})
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (u *LotteryChanceUpsertOne) ClearCountDate() *LotteryChanceUpsertOne {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.ClearCountDate()
 	})
 }
 
@@ -892,6 +954,27 @@ func (u *LotteryChanceUpsertBulk) UpdateLastLoginDate() *LotteryChanceUpsertBulk
 func (u *LotteryChanceUpsertBulk) ClearLastLoginDate() *LotteryChanceUpsertBulk {
 	return u.Update(func(s *LotteryChanceUpsert) {
 		s.ClearLastLoginDate()
+	})
+}
+
+// SetCountDate sets the "count_date" field.
+func (u *LotteryChanceUpsertBulk) SetCountDate(v string) *LotteryChanceUpsertBulk {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.SetCountDate(v)
+	})
+}
+
+// UpdateCountDate sets the "count_date" field to the value that was provided on create.
+func (u *LotteryChanceUpsertBulk) UpdateCountDate() *LotteryChanceUpsertBulk {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.UpdateCountDate()
+	})
+}
+
+// ClearCountDate clears the value of the "count_date" field.
+func (u *LotteryChanceUpsertBulk) ClearCountDate() *LotteryChanceUpsertBulk {
+	return u.Update(func(s *LotteryChanceUpsert) {
+		s.ClearCountDate()
 	})
 }
 

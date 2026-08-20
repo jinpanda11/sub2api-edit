@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math"
+	"sort"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 type fakeChanceRepo struct {
 	row            *LotteryChance
+	countDate      *string
 	grantsLogin    int
 	grantsRecharge int
 	consumed       int
@@ -31,6 +33,18 @@ func (f *fakeChanceRepo) GetOrCreate(ctx context.Context, userID int64) (*Lotter
 		f.row = &LotteryChance{UserID: userID}
 	}
 	return f.row, nil
+}
+
+func (f *fakeChanceRepo) ResetDailyCountIfExpired(ctx context.Context, userID int64, today string) error {
+	if f.row == nil {
+		return nil
+	}
+	if f.countDate != nil && *f.countDate == today {
+		return nil
+	}
+	f.row.AvailableCount = 0
+	f.countDate = &today
+	return nil
 }
 
 func (f *fakeChanceRepo) Get(ctx context.Context, userID int64) (*LotteryChance, error) {
@@ -133,6 +147,36 @@ func (f *fakeRecordRepo) ListByUser(ctx context.Context, userID int64, limit, of
 
 func (f *fakeRecordRepo) CountByUser(ctx context.Context, userID int64) (int64, error) {
 	return int64(len(f.records)), nil
+}
+
+func (f *fakeRecordRepo) DailyAggregate(ctx context.Context, from, to time.Time) ([]LotteryDailyAggregate, int64, error) {
+	byDate := map[string]LotteryDailyAggregate{}
+	participants := map[string]map[int64]struct{}{}
+	rangeParticipants := map[int64]struct{}{}
+	for _, r := range f.records {
+		key := shanghaiStartOfDay(r.CreatedAt)
+		if key.Before(from) || !key.Before(to) {
+			continue
+		}
+		date := key.Format("2006-01-02")
+		agg := byDate[date]
+		agg.Date = date
+		agg.Draws++
+		agg.TotalAmount += r.Amount
+		byDate[date] = agg
+		if participants[date] == nil {
+			participants[date] = map[int64]struct{}{}
+		}
+		participants[date][r.UserID] = struct{}{}
+		rangeParticipants[r.UserID] = struct{}{}
+	}
+	out := make([]LotteryDailyAggregate, 0, len(byDate))
+	for date, agg := range byDate {
+		agg.Participants = int64(len(participants[date]))
+		out = append(out, agg)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
+	return out, int64(len(rangeParticipants)), nil
 }
 
 func newTestLotteryService(entClient *dbent.Client, chanceRepo LotteryChanceRepository, userRepo UserRepository, recordRepo LotteryRecordRepository) *LotteryService {
@@ -244,8 +288,11 @@ func TestDraw_NoChancesReturnsError(t *testing.T) {
 
 func TestDraw_SuccessConsumesChanceAndCreditsBalance(t *testing.T) {
 	client := newSQLiteEntClient(t)
+	today := shanghaiDateStr(time.Now())
 	chanceRepo := &fakeChanceRepo{
 		row: &LotteryChance{UserID: 1, AvailableCount: 3, TodayRechargeCount: 0},
+		// 标记为今日次数，重置逻辑不会误清空今日有效次数。
+		countDate: &today,
 	}
 	userRepo := &fakeUserRepo{user: &User{ID: 1, Balance: 10.0}}
 	recordRepo := &fakeRecordRepo{}
@@ -262,6 +309,29 @@ func TestDraw_SuccessConsumesChanceAndCreditsBalance(t *testing.T) {
 	require.Equal(t, result.PrizeAmount, recordRepo.records[0].Amount)
 	require.Equal(t, "draw", recordRepo.records[0].Source)
 	require.InDelta(t, result.NewBalance, recordRepo.records[0].BalanceAfter, 1e-9)
+}
+
+func TestDailyCountReset_ExpiresUnusedChancesAcrossDays(t *testing.T) {
+	userRepo := &fakeUserRepo{user: &User{ID: 1}}
+	svc := newTestLotteryService(nil, nil, userRepo, nil)
+	chanceRepo, ok := svc.chanceRepo.(*fakeChanceRepo)
+	require.True(t, ok)
+
+	today := shanghaiDateStr(time.Now())
+	yesterday := time.Now().In(shanghaiLoc).AddDate(0, 0, -1).Format("2006-01-02")
+
+	// 模拟昨日登录获得 +1（未抽奖），对应行尚无 count_date 标记。
+	_, err := chanceRepo.GetOrCreate(context.Background(), 1)
+	require.NoError(t, err)
+	_, err = chanceRepo.GrantLoginReward(context.Background(), 1, 1, yesterday)
+	require.NoError(t, err)
+	require.Equal(t, 1, chanceRepo.row.AvailableCount)
+
+	// 进入新的一天调用 Status，应清空昨日未使用次数并标记今日。
+	status, err := svc.Status(context.Background(), 1)
+	require.NoError(t, err)
+	require.Equal(t, 0, status.AvailableCount)
+	require.Equal(t, today, *chanceRepo.countDate)
 }
 
 func TestDraw_DisabledReturnsError(t *testing.T) {
@@ -308,3 +378,65 @@ func (f *lotteryTestSettingRepo) Delete(ctx context.Context, key string) error {
 }
 
 var _ SettingRepository = (*lotteryTestSettingRepo)(nil)
+
+func TestAdminDailyStats_AggregatesAndFillsZeros(t *testing.T) {
+	from, _ := time.ParseInLocation("2006-01-02", "2026-08-17", shanghaiLoc)
+	records := []LotteryRecord{
+		{UserID: 1, Amount: 1.00, CreatedAt: from.Add(10 * time.Hour)},              // 08-17 user1
+		{UserID: 1, Amount: 2.00, CreatedAt: from.Add(11 * time.Hour)},              // 08-17 user1（同日多次）
+		{UserID: 2, Amount: 0.50, CreatedAt: from.AddDate(0, 0, 1).Add(5 * time.Hour)}, // 08-18 user2
+		{UserID: 2, Amount: 1.50, CreatedAt: from.AddDate(0, 0, 3).Add(5 * time.Hour)}, // 08-20 user2
+	}
+	recordRepo := &fakeRecordRepo{records: records}
+	svc := newTestLotteryService(nil, nil, nil, recordRepo)
+
+	stats, err := svc.AdminDailyStats(context.Background(), "2026-08-17", "2026-08-20")
+	require.NoError(t, err)
+	require.Equal(t, "2026-08-17", stats.StartDate)
+	require.Equal(t, "2026-08-20", stats.EndDate)
+
+	require.Len(t, stats.Daily, 4)
+	require.Equal(t, "2026-08-17", stats.Daily[0].Date)
+	require.Equal(t, int64(2), stats.Daily[0].Draws)
+	require.Equal(t, int64(1), stats.Daily[0].Participants)
+	require.InDelta(t, 3.0, stats.Daily[0].TotalAmount, 1e-9)
+
+	// 无数据日期补齐为零。
+	require.Equal(t, "2026-08-19", stats.Daily[2].Date)
+	require.Equal(t, int64(0), stats.Daily[2].Draws)
+	require.Equal(t, int64(0), stats.Daily[2].Participants)
+	require.InDelta(t, 0.0, stats.Daily[2].TotalAmount, 1e-9)
+
+	require.Equal(t, int64(4), stats.Summary.TotalDraws)
+	require.Equal(t, int64(2), stats.Summary.TotalParticipants)
+	require.InDelta(t, 5.0, stats.Summary.TotalAmount, 1e-9)
+	require.InDelta(t, 1.25, stats.Summary.AvgAmount, 1e-9)
+}
+
+func TestAdminDailyStats_InvalidDateReturnsError(t *testing.T) {
+	recordRepo := &fakeRecordRepo{}
+	svc := newTestLotteryService(nil, nil, nil, recordRepo)
+	_, err := svc.AdminDailyStats(context.Background(), "2026-13-99", "2026-08-20")
+	require.Error(t, err)
+}
+
+func TestResolveLotteryStatsWindow_DefaultsToLast30Days(t *testing.T) {
+	start, end, err := resolveLotteryStatsWindow("", "")
+	require.NoError(t, err)
+	require.True(t, start.Before(end))
+	// 默认窗口为 30 天（含当天），end/start 跨 30 个自然日。
+	require.Equal(t, 30, int(end.Sub(start)/(24*time.Hour)))
+	// start 与 end 都对齐到上海自然日的 00:00。
+	require.Equal(t, 0, start.Hour())
+	require.Equal(t, 0, start.Minute())
+	require.Equal(t, 0, end.Hour())
+}
+
+func TestResolveLotteryStatsWindow_ExplicitRange(t *testing.T) {
+	start, end, err := resolveLotteryStatsWindow("2026-08-01", "2026-08-03")
+	require.NoError(t, err)
+	require.Equal(t, "2026-08-01", start.Format("2006-01-02"))
+	// end 为闭区间 08-03，聚合上界为次日 08-04。
+	require.Equal(t, "2026-08-04", end.Format("2006-01-02"))
+	require.Equal(t, 3, int(end.Sub(start)/(24*time.Hour)))
+}

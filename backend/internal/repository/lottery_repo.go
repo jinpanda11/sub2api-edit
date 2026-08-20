@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/lotterychance"
@@ -50,6 +53,25 @@ func (r *lotteryChanceRepository) Get(ctx context.Context, userID int64) (*servi
 		return nil, err
 	}
 	return lotteryChanceEntityToService(m), nil
+}
+
+// ResetDailyCountIfExpired 若可用次数所属上海自然日（count_date）早于 today 或尚未标记，
+// 则清零可用次数并标记为 today。
+// 实现“未使用次数不跨天保留”：跨天后旧次数一律作废。
+func (r *lotteryChanceRepository) ResetDailyCountIfExpired(ctx context.Context, userID int64, today string) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.LotteryChance.Update().
+		Where(
+			lotterychance.UserIDEQ(userID),
+			lotterychance.Or(
+				lotterychance.CountDateIsNil(),
+				lotterychance.CountDateNEQ(today),
+			),
+		).
+		SetAvailableCount(0).
+		SetCountDate(today).
+		Save(ctx)
+	return err
 }
 
 // GrantLoginReward 原子发放登录奖励，仅当 last_login_date < today 时生效（返回是否发放）。
@@ -183,6 +205,74 @@ func (r *lotteryRecordRepository) CountByUser(ctx context.Context, userID int64)
 		Where(lotteryrecord.UserIDEQ(userID)).
 		Count(ctx)
 	return int64(n), err
+}
+
+// DailyAggregate 按上海自然日聚合 [from, to) 区间内的抽奖记录，并返回区间内去重参与人数。
+// 使用 ent client 暴露的原始 QueryContext 执行原生聚合 SQL，避免新增数据库连接依赖。
+func (r *lotteryRecordRepository) DailyAggregate(ctx context.Context, from, to time.Time) ([]service.LotteryDailyAggregate, int64, error) {
+	const query = `
+SELECT
+	TO_CHAR(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date,
+	COUNT(*) AS draws,
+	COUNT(DISTINCT user_id) AS participants,
+	COALESCE(SUM(amount), 0) AS total_amount
+FROM lottery_records
+WHERE created_at >= $1 AND created_at < $2
+GROUP BY date
+ORDER BY date ASC`
+
+	rows, err := r.client.QueryContext(ctx, query, from, to)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query lottery daily aggregate: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []service.LotteryDailyAggregate
+	for rows.Next() {
+		var (
+			date         string
+			draws        int64
+			participants int64
+			totalAmount  sql.NullFloat64
+		)
+		if err := rows.Scan(&date, &draws, &participants, &totalAmount); err != nil {
+			return nil, 0, fmt.Errorf("scan lottery daily aggregate: %w", err)
+		}
+		amt := 0.0
+		if totalAmount.Valid {
+			amt = totalAmount.Float64
+		}
+		out = append(out, service.LotteryDailyAggregate{
+			Date:         date,
+			Draws:        draws,
+			Participants: participants,
+			TotalAmount:  amt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate lottery daily aggregate: %w", err)
+	}
+
+	// 区间内去重参与人数（与每日去重口径一致，避免跨天重复计数）。
+	rows2, err := r.client.QueryContext(ctx,
+		`SELECT COUNT(DISTINCT user_id) FROM lottery_records WHERE created_at >= $1 AND created_at < $2`,
+		from, to,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count lottery distinct participants: %w", err)
+	}
+	defer func() { _ = rows2.Close() }()
+	var rangeParticipants int64
+	if rows2.Next() {
+		if err := rows2.Scan(&rangeParticipants); err != nil {
+			return nil, 0, fmt.Errorf("scan lottery distinct participants: %w", err)
+		}
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate lottery distinct participants: %w", err)
+	}
+
+	return out, rangeParticipants, nil
 }
 
 func lotteryChanceEntityToService(m *ent.LotteryChance) *service.LotteryChance {

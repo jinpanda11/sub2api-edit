@@ -1103,6 +1103,7 @@ var (
 		{Name: "today_recharge_count", Type: field.TypeInt, Default: 0},
 		{Name: "recharge_date", Type: field.TypeString, Nullable: true, Size: 10},
 		{Name: "last_login_date", Type: field.TypeString, Nullable: true, Size: 10},
+		{Name: "count_date", Type: field.TypeString, Nullable: true, Size: 10},
 	}
 	// LotteryChancesTable holds the schema information for the "lottery_chances" table.
 	LotteryChancesTable = &schema.Table{
@@ -1119,6 +1120,11 @@ var (
 				Name:    "lotterychance_last_login_date",
 				Unique:  false,
 				Columns: []*schema.Column{LotteryChancesColumns[7]},
+			},
+			{
+				Name:    "lotterychance_count_date",
+				Unique:  false,
+				Columns: []*schema.Column{LotteryChancesColumns[8]},
 			},
 		},
 	}

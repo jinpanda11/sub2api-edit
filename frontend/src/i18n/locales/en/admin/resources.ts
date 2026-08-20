@@ -602,4 +602,28 @@ export default {
     },
 
     // Ops Monitoring
+
+    // Daily Lottery Statistics
+    lottery: {
+      title: 'Daily Lottery Statistics',
+      description: 'View daily blind-box lottery participation, draws and amounts awarded',
+      summary: 'Range Summary',
+      startDate: 'Start Date',
+      endDate: 'End Date',
+      totalDraws: 'Total Draws',
+      totalParticipants: 'Participants',
+      totalAmount: 'Amount Awarded',
+      avgAmount: 'Avg Prize',
+      date: 'Date',
+      draws: 'Draws',
+      participants: 'Participants',
+      amount: 'Amount Awarded',
+      averageAmount: 'Avg Prize',
+      timezone: 'Timezone',
+      timezoneValue: 'Asia/Shanghai',
+      noData: 'No lottery data in the selected range',
+      loadFailed: 'Failed to load lottery statistics',
+      query: 'Query',
+      days30: 'Last 30 days'
+    }
 }

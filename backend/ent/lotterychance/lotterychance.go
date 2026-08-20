@@ -27,6 +27,8 @@ const (
 	FieldRechargeDate = "recharge_date"
 	// FieldLastLoginDate holds the string denoting the last_login_date field in the database.
 	FieldLastLoginDate = "last_login_date"
+	// FieldCountDate holds the string denoting the count_date field in the database.
+	FieldCountDate = "count_date"
 	// Table holds the table name of the lotterychance in the database.
 	Table = "lottery_chances"
 )
@@ -41,6 +43,7 @@ var Columns = []string{
 	FieldTodayRechargeCount,
 	FieldRechargeDate,
 	FieldLastLoginDate,
+	FieldCountDate,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -68,6 +71,8 @@ var (
 	RechargeDateValidator func(string) error
 	// LastLoginDateValidator is a validator for the "last_login_date" field. It is called by the builders before save.
 	LastLoginDateValidator func(string) error
+	// CountDateValidator is a validator for the "count_date" field. It is called by the builders before save.
+	CountDateValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the LotteryChance queries.
@@ -111,4 +116,9 @@ func ByRechargeDate(opts ...sql.OrderTermOption) OrderOption {
 // ByLastLoginDate orders the results by the last_login_date field.
 func ByLastLoginDate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastLoginDate, opts...).ToFunc()
+}
+
+// ByCountDate orders the results by the count_date field.
+func ByCountDate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCountDate, opts...).ToFunc()
 }

@@ -64,6 +64,9 @@ type LotteryRecord struct {
 type LotteryChanceRepository interface {
 	GetOrCreate(ctx context.Context, userID int64) (*LotteryChance, error)
 	Get(ctx context.Context, userID int64) (*LotteryChance, error)
+	// ResetDailyCountIfExpired 当可用次数所属上海自然日早于 today 时清零并标记 today。
+	// 用于实现“未使用次数不跨天保留”。
+	ResetDailyCountIfExpired(ctx context.Context, userID int64, today string) error
 	// GrantLoginReward 原子发放登录奖励，仅当 last_login_date < today 时生效。
 	GrantLoginReward(ctx context.Context, userID int64, reward int, today string) (bool, error)
 	// GrantRechargeReward 原子发放充值/兑换码奖励，返回实际发放次数（受每日上限约束）。
@@ -80,6 +83,8 @@ type LotteryRecordRepository interface {
 	UpdateBalanceAfter(ctx context.Context, id int64, balanceAfter float64) error
 	ListByUser(ctx context.Context, userID int64, limit, offset int) ([]LotteryRecord, error)
 	CountByUser(ctx context.Context, userID int64) (int64, error)
+	// DailyAggregate 按上海自然日聚合 [from, to) 区间内的抽奖记录，并返回区间内去重参与人数。
+	DailyAggregate(ctx context.Context, from, to time.Time) ([]LotteryDailyAggregate, int64, error)
 }
 
 // LotteryConfig 抽奖规则配置（来自 settings 表，缺失时使用默认值）。
@@ -113,6 +118,30 @@ type DrawResult struct {
 	PrizeAmount    float64 `json:"prize_amount"`
 	NewBalance     float64 `json:"new_balance"`
 	RemainingCount int     `json:"remaining_count"`
+}
+
+// LotteryDailyAggregate 某上海自然日内的抽奖聚合结果。
+type LotteryDailyAggregate struct {
+	Date         string  `json:"date"`
+	Draws        int64   `json:"draws"`
+	Participants int64   `json:"participants"`
+	TotalAmount  float64 `json:"total_amount"`
+}
+
+// LotteryDailyStats 管理端每日抽奖统计（GET /api/v1/admin/lottery/stats）。
+type LotteryDailyStats struct {
+	StartDate string                  `json:"start_date"`
+	EndDate   string                  `json:"end_date"`
+	Summary   LotteryDailySummary     `json:"summary"`
+	Daily     []LotteryDailyAggregate `json:"daily"`
+}
+
+// LotteryDailySummary 日期区间内的统计汇总。
+type LotteryDailySummary struct {
+	TotalDraws        int64   `json:"total_draws"`
+	TotalParticipants int64   `json:"total_participants"`
+	TotalAmount       float64 `json:"total_amount"`
+	AvgAmount         float64 `json:"avg_amount"`
 }
 
 // LotteryDrawLimiter 抽奖接口防刷限流（1 次/秒），由 repository 层基于 Redis 实现。
@@ -219,6 +248,10 @@ func (s *LotteryService) GrantLoginReward(ctx context.Context, userID int64, rew
 		return err
 	}
 	today := shanghaiDateStr(time.Now())
+	// 未使用次数不跨天保留：进入新的一天先清零旧次数。
+	if err := s.chanceRepo.ResetDailyCountIfExpired(ctx, userID, today); err != nil {
+		return err
+	}
 	_, err := s.chanceRepo.GrantLoginReward(ctx, userID, reward, today)
 	return err
 }
@@ -241,6 +274,10 @@ func (s *LotteryService) GrantRechargeReward(ctx context.Context, userID int64, 
 		return err
 	}
 	today := shanghaiDateStr(time.Now())
+	// 未使用次数不跨天保留：进入新的一天先清零旧次数，再计入今日充值所得。
+	if err := s.chanceRepo.ResetDailyCountIfExpired(ctx, userID, today); err != nil {
+		return err
+	}
 	_, err := s.chanceRepo.GrantRechargeReward(ctx, userID, earned, today, cfg.RechargeDailyMax)
 	return err
 }
@@ -249,6 +286,14 @@ func (s *LotteryService) GrantRechargeReward(ctx context.Context, userID int64, 
 func (s *LotteryService) Status(ctx context.Context, userID int64) (*LotteryStatus, error) {
 	cfg := s.GetConfig(ctx)
 	today := shanghaiDateStr(time.Now())
+
+	// 未使用次数不跨天保留：进入新的一天先清零旧次数。
+	if _, err := s.chanceRepo.GetOrCreate(ctx, userID); err != nil {
+		return nil, err
+	}
+	if err := s.chanceRepo.ResetDailyCountIfExpired(ctx, userID, today); err != nil {
+		return nil, err
+	}
 
 	// 惰性兜底：任何登录路径（含 passkey 等未走登录钩子的路径）只要当天登录过就补发奖励。
 	_ = s.ensureLoginReward(ctx, userID, cfg, today)
@@ -289,8 +334,16 @@ func (s *LotteryService) Draw(ctx context.Context, userID int64) (*DrawResult, e
 	if !s.acquireDrawToken(ctx, userID) {
 		return nil, ErrLotteryTooFrequent
 	}
+	// 未使用次数不跨天保留：进入新的一天先清零旧次数，再发放今日登录奖励。
+	if _, err := s.chanceRepo.GetOrCreate(ctx, userID); err != nil {
+		return nil, err
+	}
+	today := shanghaiDateStr(time.Now())
+	if err := s.chanceRepo.ResetDailyCountIfExpired(ctx, userID, today); err != nil {
+		return nil, err
+	}
 	// 惰性兜底发放登录奖励。
-	_ = s.ensureLoginReward(ctx, userID, cfg, shanghaiDateStr(time.Now()))
+	_ = s.ensureLoginReward(ctx, userID, cfg, today)
 
 	if _, err := s.chanceRepo.GetOrCreate(ctx, userID); err != nil {
 		return nil, err
@@ -381,6 +434,98 @@ func (s *LotteryService) Records(ctx context.Context, userID int64, page, pageSi
 		PageSize: pageSize,
 		Pages:    pages,
 	}, nil
+}
+
+// AdminDailyStats 返回 [startDate, endDate] 区间（上海自然日）内的每日抽奖统计汇总。
+// 日期为空时默认取最近 30 天；区间含零值日期补齐，便于前端按天展表。
+func (s *LotteryService) AdminDailyStats(ctx context.Context, startDate, endDate string) (*LotteryDailyStats, error) {
+	start, end, err := resolveLotteryStatsWindow(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	if s.recordRepo == nil {
+		return nil, fmt.Errorf("lottery record repository not configured")
+	}
+
+	// end 已指向次日的 00:00（上海时区），聚合使用 [start, end) 半开区间。
+	aggregates, rangeParticipants, err := s.recordRepo.DailyAggregate(ctx, start, end)
+	if err != nil {
+		return nil, err
+	}
+	byDate := make(map[string]LotteryDailyAggregate, len(aggregates))
+	for _, a := range aggregates {
+		byDate[a.Date] = a
+	}
+
+	daily := make([]LotteryDailyAggregate, 0, end.Sub(start)/(24*time.Hour))
+	for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		if agg, ok := byDate[dateStr]; ok {
+			daily = append(daily, agg)
+		} else {
+			daily = append(daily, LotteryDailyAggregate{Date: dateStr})
+		}
+	}
+
+	summary := LotteryDailySummary{TotalParticipants: rangeParticipants}
+	for _, a := range aggregates {
+		summary.TotalDraws += a.Draws
+		summary.TotalAmount += a.TotalAmount
+	}
+	if summary.TotalDraws > 0 {
+		summary.AvgAmount = math.Round(summary.TotalAmount/float64(summary.TotalDraws)*100) / 100
+	}
+	return &LotteryDailyStats{
+		StartDate: start.Format("2006-01-02"),
+		EndDate:   end.AddDate(0, 0, -1).Format("2006-01-02"),
+		Summary:   summary,
+		Daily:     daily,
+	}, nil
+}
+
+// resolveLotteryStatsWindow 解析统计日期窗口，返回 [start, endOfEnd+1day) 上海时区边界。
+// 传入合法 YYYY-MM-DD 则使用；为空时默认最近 30 天。
+func resolveLotteryStatsWindow(startDate, endDate string) (time.Time, time.Time, error) {
+	now := time.Now().In(shanghaiLoc)
+
+	var start time.Time
+	var end time.Time
+	if startDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", startDate, shanghaiLoc)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.BadRequest("LOTTERY_STATS_INVALID_DATE", "invalid start_date, expected YYYY-MM-DD")
+		}
+		start = parsed
+	}
+	if endDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", endDate, shanghaiLoc)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.BadRequest("LOTTERY_STATS_INVALID_DATE", "invalid end_date, expected YYYY-MM-DD")
+		}
+		end = parsed
+	}
+	if startDate == "" {
+		start = now.AddDate(0, 0, -29)
+	}
+	if endDate == "" {
+		end = now
+	}
+	// start/end 归一化为当天的 00:00（上海时区）。
+	start = shanghaiStartOfDay(start)
+	end = shanghaiStartOfDay(end)
+	// end 为闭区间日期，exclusiveEnd 为次日 00:00，保证聚合为 [start, exclusiveEnd) 半开区间。
+	exclusiveEnd := end.AddDate(0, 0, 1)
+	// 防御：非法倒序窗口时兜底为当天。
+	if !start.Before(exclusiveEnd) {
+		start = exclusiveEnd.AddDate(0, 0, -1)
+	}
+	return start, exclusiveEnd, nil
+}
+
+// shanghaiStartOfDay 返回给定时刻所在上海自然日的 00:00。
+func shanghaiStartOfDay(t time.Time) time.Time {
+	in := t.In(shanghaiLoc)
+	return time.Date(in.Year(), in.Month(), in.Day(), 0, 0, 0, 0, shanghaiLoc)
 }
 
 // ensureLoginReward 惰性登录奖励：仅当用户当天（上海时区）成功登录过且奖励未发放时补发。

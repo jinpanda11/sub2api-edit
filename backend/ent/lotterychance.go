@@ -31,7 +31,9 @@ type LotteryChance struct {
 	RechargeDate *string `json:"recharge_date,omitempty"`
 	// LastLoginDate holds the value of the "last_login_date" field.
 	LastLoginDate *string `json:"last_login_date,omitempty"`
-	selectValues  sql.SelectValues
+	// CountDate holds the value of the "count_date" field.
+	CountDate    *string `json:"count_date,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -41,7 +43,7 @@ func (*LotteryChance) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case lotterychance.FieldID, lotterychance.FieldUserID, lotterychance.FieldAvailableCount, lotterychance.FieldTodayRechargeCount:
 			values[i] = new(sql.NullInt64)
-		case lotterychance.FieldRechargeDate, lotterychance.FieldLastLoginDate:
+		case lotterychance.FieldRechargeDate, lotterychance.FieldLastLoginDate, lotterychance.FieldCountDate:
 			values[i] = new(sql.NullString)
 		case lotterychance.FieldCreatedAt, lotterychance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -110,6 +112,13 @@ func (_m *LotteryChance) assignValues(columns []string, values []any) error {
 				_m.LastLoginDate = new(string)
 				*_m.LastLoginDate = value.String
 			}
+		case lotterychance.FieldCountDate:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field count_date", values[i])
+			} else if value.Valid {
+				_m.CountDate = new(string)
+				*_m.CountDate = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -168,6 +177,11 @@ func (_m *LotteryChance) String() string {
 	builder.WriteString(", ")
 	if v := _m.LastLoginDate; v != nil {
 		builder.WriteString("last_login_date=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CountDate; v != nil {
+		builder.WriteString("count_date=")
 		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')

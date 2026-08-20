@@ -1300,6 +1300,10 @@ func init() {
 	lotterychanceDescLastLoginDate := lotterychanceFields[4].Descriptor()
 	// lotterychance.LastLoginDateValidator is a validator for the "last_login_date" field. It is called by the builders before save.
 	lotterychance.LastLoginDateValidator = lotterychanceDescLastLoginDate.Validators[0].(func(string) error)
+	// lotterychanceDescCountDate is the schema descriptor for count_date field.
+	lotterychanceDescCountDate := lotterychanceFields[5].Descriptor()
+	// lotterychance.CountDateValidator is a validator for the "count_date" field. It is called by the builders before save.
+	lotterychance.CountDateValidator = lotterychanceDescCountDate.Validators[0].(func(string) error)
 	lotteryrecordMixin := schema.LotteryRecord{}.Mixin()
 	lotteryrecordMixinFields0 := lotteryrecordMixin[0].Fields()
 	_ = lotteryrecordMixinFields0
