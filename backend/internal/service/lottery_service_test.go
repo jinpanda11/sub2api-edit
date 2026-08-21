@@ -420,16 +420,34 @@ func TestAdminDailyStats_InvalidDateReturnsError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestResolveLotteryStatsWindow_DefaultsToLast30Days(t *testing.T) {
+func TestResolveLotteryStatsWindow_DefaultsToToday(t *testing.T) {
 	start, end, err := resolveLotteryStatsWindow("", "")
 	require.NoError(t, err)
 	require.True(t, start.Before(end))
-	// 默认窗口为 30 天（含当天），end/start 跨 30 个自然日。
-	require.Equal(t, 30, int(end.Sub(start)/(24*time.Hour)))
+	// 默认窗口为当天，end 是次日零点的排他上界。
+	require.Equal(t, 1, int(end.Sub(start)/(24*time.Hour)))
+	today := time.Now().In(shanghaiLoc).Format("2006-01-02")
+	require.Equal(t, today, start.Format("2006-01-02"))
+	require.Equal(t, today, end.AddDate(0, 0, -1).Format("2006-01-02"))
 	// start 与 end 都对齐到上海自然日的 00:00。
 	require.Equal(t, 0, start.Hour())
 	require.Equal(t, 0, start.Minute())
 	require.Equal(t, 0, end.Hour())
+}
+
+func TestResolveLotteryStatsWindow_MissingDateDefaultsToToday(t *testing.T) {
+	today := time.Now().In(shanghaiLoc).Format("2006-01-02")
+	tomorrow := time.Now().In(shanghaiLoc).AddDate(0, 0, 1).Format("2006-01-02")
+
+	start, end, err := resolveLotteryStatsWindow("", today)
+	require.NoError(t, err)
+	require.Equal(t, today, start.Format("2006-01-02"))
+	require.Equal(t, tomorrow, end.Format("2006-01-02"))
+
+	start, end, err = resolveLotteryStatsWindow(today, "")
+	require.NoError(t, err)
+	require.Equal(t, today, start.Format("2006-01-02"))
+	require.Equal(t, tomorrow, end.Format("2006-01-02"))
 }
 
 func TestResolveLotteryStatsWindow_ExplicitRange(t *testing.T) {

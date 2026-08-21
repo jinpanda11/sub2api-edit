@@ -437,7 +437,7 @@ func (s *LotteryService) Records(ctx context.Context, userID int64, page, pageSi
 }
 
 // AdminDailyStats 返回 [startDate, endDate] 区间（上海自然日）内的每日抽奖统计汇总。
-// 日期为空时默认取最近 30 天；区间含零值日期补齐，便于前端按天展表。
+// 日期为空时默认取当天；区间含零值日期补齐，便于前端按天展表。
 func (s *LotteryService) AdminDailyStats(ctx context.Context, startDate, endDate string) (*LotteryDailyStats, error) {
 	start, end, err := resolveLotteryStatsWindow(startDate, endDate)
 	if err != nil {
@@ -484,7 +484,7 @@ func (s *LotteryService) AdminDailyStats(ctx context.Context, startDate, endDate
 }
 
 // resolveLotteryStatsWindow 解析统计日期窗口，返回 [start, endOfEnd+1day) 上海时区边界。
-// 传入合法 YYYY-MM-DD 则使用；为空时默认最近 30 天。
+// 传入合法 YYYY-MM-DD 则使用；为空时默认当天。
 func resolveLotteryStatsWindow(startDate, endDate string) (time.Time, time.Time, error) {
 	now := time.Now().In(shanghaiLoc)
 
@@ -505,7 +505,7 @@ func resolveLotteryStatsWindow(startDate, endDate string) (time.Time, time.Time,
 		end = parsed
 	}
 	if startDate == "" {
-		start = now.AddDate(0, 0, -29)
+		start = now
 	}
 	if endDate == "" {
 		end = now

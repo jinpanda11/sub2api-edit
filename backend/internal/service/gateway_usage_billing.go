@@ -928,11 +928,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
-	// 余额扣费成功 → 异步累加今日消费排行（best-effort，失败不影响计费结果）。
-	if s.rankingService != nil && usageLog.ActualCost > 0 && usageLog.BillingType == BillingTypeBalance {
-		s.rankingService.IncrementAsync(usageLog.UserID, usageLog.ActualCost)
-	}
-
 	return nil
 }
 

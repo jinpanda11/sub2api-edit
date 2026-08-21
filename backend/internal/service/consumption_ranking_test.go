@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"database/sql"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,48 +15,20 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// fakeRankingCache 内存版 ConsumptionRankingCache，用于单测。
-type fakeRankingCache struct {
-	mu         sync.Mutex
-	warm       bool
-	scores     []ConsumptionRankingScore
-	increments []ConsumptionRankingScore
-}
+func newRankingTestEnv(t *testing.T) *ConsumptionRankingService {
+	t.Helper()
 
-func (f *fakeRankingCache) IncrementToday(ctx context.Context, date string, userID int64, cost float64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.increments = append(f.increments, ConsumptionRankingScore{UserID: userID, Score: cost})
-	return nil
-}
+	// SQLite is used here to exercise the persisted usage_logs aggregation path.
+	db, err := sql.Open("sqlite", "file:consumption_ranking_test?mode=memory&cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { _ = client.Close() })
 
-func (f *fakeRankingCache) IsWarm(ctx context.Context, date string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.warm, nil
+	return NewConsumptionRankingService(client, nil, nil)
 }
-
-func (f *fakeRankingCache) TopUsers(ctx context.Context, date string, limit int) ([]ConsumptionRankingScore, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.scores, nil
-}
-
-func (f *fakeRankingCache) MarkWarm(ctx context.Context, date string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.warm = true
-	return nil
-}
-
-func (f *fakeRankingCache) WarmSet(ctx context.Context, date string, scores []ConsumptionRankingScore) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.scores = scores
-	f.warm = true
-	return nil
-}
-
 func TestMaskRankingEmail(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -83,22 +54,6 @@ func TestRound4(t *testing.T) {
 	require.Equal(t, 0.0, round4(0.00001))
 }
 
-func newRankingTestEnv(t *testing.T) (*ConsumptionRankingService, *fakeRankingCache) {
-	t.Helper()
-	cache := &fakeRankingCache{}
-
-	// sqlite ent client 仅用于 fetchEmails（用户邮箱批量查询）。
-	db, err := sql.Open("sqlite", "file:consumption_ranking_test?mode=memory&cache=shared")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
-	require.NoError(t, err)
-	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
-	t.Cleanup(func() { _ = client.Close() })
-
-	return NewConsumptionRankingService(client, cache, nil), cache
-}
-
 func mustInsertRankingUser(t *testing.T, ctx context.Context, client *dbent.Client, email string) int64 {
 	t.Helper()
 	u, err := client.User.Create().
@@ -111,19 +66,23 @@ func mustInsertRankingUser(t *testing.T, ctx context.Context, client *dbent.Clie
 	return u.ID
 }
 
-func TestGetToday_FromWarmCache(t *testing.T) {
-	svc, cache := newRankingTestEnv(t)
+func TestGetToday_FromUsageLogs(t *testing.T) {
+	svc := newRankingTestEnv(t)
 	ctx := context.Background()
 
 	userA := mustInsertRankingUser(t, ctx, svc.entClient, "ab123456cd@qq.com")
 	userB := mustInsertRankingUser(t, ctx, svc.entClient, "testuser@example.com")
+	accountA := mustInsertRankingAccount(t, ctx, svc.entClient, "ranking-account-a")
+	accountB := mustInsertRankingAccount(t, ctx, svc.entClient, "ranking-account-b")
+	keyA := mustInsertRankingAPIKey(t, ctx, svc.entClient, userA, accountA, "ranking-key-a")
+	keyB := mustInsertRankingAPIKey(t, ctx, svc.entClient, userB, accountB, "ranking-key-b")
+	today := time.Now().In(shanghaiLoc).Truncate(time.Hour)
 
-	// 预置缓存：warm 标记 + 两个用户的分数
-	cache.warm = true
-	cache.scores = []ConsumptionRankingScore{
-		{UserID: userA, Score: 128.4567},
-		{UserID: userB, Score: 95.32},
-	}
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userA, keyA, accountA, "ranking-a-1", today, BillingTypeBalance, 2.25, 100, 20, 30, 40)
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userA, keyA, accountA, "ranking-a-2", today.Add(time.Minute), BillingTypeBalance, 1.75, 10, 5, 5, 5)
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userA, keyA, accountA, "ranking-a-free", today.Add(2*time.Minute), BillingTypeBalance, 0, 999, 999, 999, 999)
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userB, keyB, accountB, "ranking-b-subscription", today.Add(3*time.Minute), BillingTypeSubscription, 99, 500, 0, 0, 0)
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userB, keyB, accountB, "ranking-b-1", today.Add(4*time.Minute), BillingTypeBalance, 3.00, 20, 10, 5, 5)
 
 	resp, err := svc.GetToday(ctx)
 	require.NoError(t, err)
@@ -131,28 +90,61 @@ func TestGetToday_FromWarmCache(t *testing.T) {
 	require.Len(t, resp.List, 2)
 	require.Equal(t, 1, resp.List[0].Rank)
 	require.Equal(t, "ab******cd@qq.com", resp.List[0].MaskedEmail)
-	require.Equal(t, 128.4567, resp.List[0].Amount)
+	require.Equal(t, 4.0, resp.List[0].Amount)
+	require.Equal(t, int64(215), resp.List[0].TotalTokens)
 	require.Equal(t, 2, resp.List[1].Rank)
 	require.Equal(t, "te****er@example.com", resp.List[1].MaskedEmail)
-	require.Equal(t, 95.32, resp.List[1].Amount)
+	require.Equal(t, 3.0, resp.List[1].Amount)
+	require.Equal(t, int64(40), resp.List[1].TotalTokens)
+
+	mustInsertRankingUsageLog(t, ctx, svc.entClient, userA, keyA, accountA, "ranking-a-3", today.Add(5*time.Minute), BillingTypeBalance, 10.0, 1, 2, 3, 4)
+	resp, err = svc.GetToday(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 14.0, resp.List[0].Amount)
+	require.Equal(t, int64(225), resp.List[0].TotalTokens)
 }
 
-func TestIncrementAsync_AccumulatesInCache(t *testing.T) {
-	svc, cache := newRankingTestEnv(t)
-	userID := int64(42)
+func mustInsertRankingAccount(t *testing.T, ctx context.Context, client *dbent.Client, name string) int64 {
+	t.Helper()
+	a, err := client.Account.Create().
+		SetName(name).
+		SetPlatform(PlatformOpenAI).
+		SetType(AccountTypeAPIKey).
+		SetStatus(StatusActive).
+		SetCredentials(map[string]any{"api_key": "test"}).
+		Save(ctx)
+	require.NoError(t, err)
+	return a.ID
+}
 
-	svc.IncrementAsync(userID, 1.25)
-	svc.IncrementAsync(userID, 0.75)
-	// 异步 goroutine 在 CI 高负载下调度可能延迟，给足窗口并校验累加总和。
-	require.Eventually(t, func() bool {
-		cache.mu.Lock()
-		defer cache.mu.Unlock()
-		var total float64
-		for _, inc := range cache.increments {
-			if inc.UserID == userID {
-				total += inc.Score
-			}
-		}
-		return total == 2.0
-	}, 10*time.Second, 20*time.Millisecond)
+func mustInsertRankingAPIKey(t *testing.T, ctx context.Context, client *dbent.Client, userID, accountID int64, key string) int64 {
+	t.Helper()
+	k, err := client.APIKey.Create().
+		SetUserID(userID).
+		SetKey(key).
+		SetName(key).
+		SetStatus(StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	return k.ID
+}
+
+func mustInsertRankingUsageLog(t *testing.T, ctx context.Context, client *dbent.Client, userID, keyID, accountID int64, requestID string, createdAt time.Time, billingType int8, actualCost float64, input, output, cacheCreation, cacheRead int) {
+	t.Helper()
+	_, err := client.UsageLog.Create().
+		SetUserID(userID).
+		SetAPIKeyID(keyID).
+		SetAccountID(accountID).
+		SetRequestID(requestID).
+		SetModel("gpt-5").
+		SetBillingType(billingType).
+		SetActualCost(actualCost).
+		SetTotalCost(actualCost).
+		SetInputTokens(input).
+		SetOutputTokens(output).
+		SetCacheCreationTokens(cacheCreation).
+		SetCacheReadTokens(cacheRead).
+		SetCreatedAt(createdAt).
+		Save(ctx)
+	require.NoError(t, err)
 }

@@ -119,6 +119,13 @@ const stats = ref<LotteryDailyStats | null>(null)
 const startDate = ref('')
 const endDate = ref('')
 
+function setToday() {
+  const today = formatDateLocalInput(new Date())
+  startDate.value = today
+  endDate.value = today
+  loadStats()
+}
+
 function setLast30Days() {
   const now = new Date()
   startDate.value = formatDateLocalInput(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000))
@@ -159,6 +166,6 @@ const columns = computed<Column[]>(() => [
 ])
 
 onMounted(() => {
-  setLast30Days()
+  setToday()
 })
 </script>
