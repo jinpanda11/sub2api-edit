@@ -272,7 +272,7 @@
                     <button type="button" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="openMaskEditorFromResult(img)">
                       {{ t('imagePlayground.actionMask') }}
                     </button>
-                    <button type="button" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="downloadImage(img)">
+                    <button type="button" :disabled="downloadingImage" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60" @click="downloadImage(img)">
                       {{ t('imagePlayground.actionDownload') }}
                     </button>
                   </div>
@@ -361,7 +361,7 @@
           />
         </div>
         <div class="mt-4 flex justify-end gap-2">
-          <button type="button" class="btn btn-secondary" @click="downloadImage(previewRecord!.images[0])">
+          <button type="button" :disabled="downloadingImage" class="btn btn-secondary" @click="downloadImage(previewRecord!.images[0])">
             {{ t('imagePlayground.actionDownload') }}
           </button>
           <button type="button" class="btn btn-primary" @click="useAsReference(previewRecord!.images[0]); previewRecord = null">
@@ -380,9 +380,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { keysAPI } from '@/api'
 import {
+  dataUrlToBlob,
   editImage,
   generateImage,
   listAvailableModels,
+  downloadGeneratedImage,
   type GeneratedImage,
 } from '@/api/imagePlayground'
 import {
@@ -537,15 +539,6 @@ async function loadGallery() {
 }
 
 // ---------- 生成 ----------
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [meta, base64] = dataUrl.split(',')
-  const mime = meta.match(/data:(.*?);/)?.[1] || 'image/png'
-  const bytes = atob(base64)
-  const arr = new Uint8Array(bytes.length)
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
-  return new Blob([arr], { type: mime })
-}
-
 async function handleGenerate() {
   if (!selectedKey.value || !prompt.value.trim()) return
   if (mode.value === 'edit' && !referenceBlob.value) return
@@ -592,7 +585,12 @@ async function handleGenerate() {
         size: resolvedSize.value,
         quality: quality.value,
         mode: mode.value,
-        images: result.data.map((d) => ({ dataUrl: d.dataUrl || '', url: d.url, revised_prompt: d.revised_prompt })),
+        images: result.data.map((d) => ({
+          dataUrl: d.dataUrl || '',
+          url: d.url,
+          mimeType: d.mimeType,
+          revised_prompt: d.revised_prompt,
+        })),
         favorite: false,
         createdAt: Date.now(),
       })
@@ -636,15 +634,19 @@ function onMaskConfirm(mask: Blob) {
   maskEditorOpen.value = false
 }
 
-function downloadImage(img: GeneratedImage) {
-  const dataUrl = img.dataUrl
-  if (!dataUrl) return
-  const link = document.createElement('a')
-  link.href = dataUrl
-  link.download = `sub2api-image-${Date.now()}.png`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+const downloadingImage = ref(false)
+
+async function downloadImage(img: GeneratedImage) {
+  if (downloadingImage.value) return
+  downloadingImage.value = true
+  try {
+    await downloadGeneratedImage(img)
+  } catch (error) {
+    console.error('Failed to download image:', error)
+    appStore.showError(t('imagePlayground.downloadFailed'))
+  } finally {
+    downloadingImage.value = false
+  }
 }
 
 async function toggleFavorite(record: GalleryRecord) {

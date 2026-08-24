@@ -6,6 +6,7 @@
 export interface GalleryImage {
   dataUrl: string
   url?: string
+  mimeType?: string
   revised_prompt?: string
 }
 
@@ -60,9 +61,20 @@ export async function galleryAdd(record: GalleryRecord): Promise<void> {
   await withStore('readwrite', (store) => store.put(record))
 }
 
+function normalizeStoredImage(image: GalleryImage): GalleryImage {
+  const nestedDataUrl = image.dataUrl?.match(/^data:[^,]+,(data:image\/[\w.+-]+;base64,[\s\S]+)$/i)
+  if (!nestedDataUrl) return image
+  return { ...image, dataUrl: nestedDataUrl[1] }
+}
+
 export async function galleryList(): Promise<GalleryRecord[]> {
   const all = await withStore<GalleryRecord[]>('readonly', (store) => store.getAll())
-  return all.sort((a, b) => b.createdAt - a.createdAt)
+  return all
+    .map((record) => ({
+      ...record,
+      images: (record.images || []).map(normalizeStoredImage),
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt)
 }
 
 export async function galleryToggleFavorite(id: string, favorite: boolean): Promise<void> {

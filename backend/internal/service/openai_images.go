@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -21,10 +22,12 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 const (
@@ -711,10 +714,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(
+			upstreamCtx,
+			resp,
+			c,
+			account,
+			proxyURL,
+			parsed.ResponseFormat,
+		)
+
 		if err != nil {
 			return nil, err
 		}
+
 		usage = nonStreamUsage
 		if nonStreamCount > 0 {
 			imageCount = nonStreamCount
@@ -882,10 +894,21 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	proxyURL string,
+	responseFormat string,
+) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
+	}
+	format := strings.ToLower(strings.TrimSpace(responseFormat))
+	if format == "" || format == "b64_json" {
+		body = s.materializeOpenAIImageURLs(ctx, body, account, proxyURL)
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
@@ -898,6 +921,131 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+}
+
+func (s *OpenAIGatewayService) materializeOpenAIImageURLs(
+	ctx context.Context,
+	body []byte,
+	account *Account,
+	proxyURL string,
+) []byte {
+	if s == nil || s.httpUpstream == nil || account == nil || len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(payload["data"], &items); err != nil || len(items) == 0 {
+		return body
+	}
+	changed := false
+	for index, item := range items {
+		if _, hasB64 := item["b64_json"]; hasB64 {
+			continue
+		}
+		rawURL, ok := item["url"]
+		if !ok {
+			continue
+		}
+		var imageURL string
+		if err := json.Unmarshal(rawURL, &imageURL); err != nil || strings.TrimSpace(imageURL) == "" {
+			continue
+		}
+		var validationErr error
+		imageURL, validationErr = urlvalidator.ValidateHTTPURL(
+
+			imageURL,
+			s.cfg != nil && s.cfg.Security.URLAllowlist.AllowInsecureHTTP,
+			urlvalidator.ValidationOptions{
+				AllowedHosts:     nil,
+				RequireAllowlist: false,
+
+				AllowPrivate: false,
+			},
+		)
+		if validationErr != nil {
+			logger.L().Warn("openai.images.url_materialization_rejected",
+				zap.Int("index", index),
+				zap.Error(validationErr),
+			)
+			continue
+		}
+
+		imageData, contentType, downloadErr := s.downloadOpenAIImageForClient(ctx, account, proxyURL, imageURL)
+
+		if downloadErr != nil {
+			logger.L().Warn("openai.images.url_materialization_failed",
+				zap.Int("index", index),
+				zap.Error(downloadErr),
+			)
+			continue
+		}
+
+		item["b64_json"] = json.RawMessage(strconv.Quote(base64.StdEncoding.EncodeToString(imageData)))
+		item["mime_type"] = json.RawMessage(strconv.Quote(contentType))
+		delete(item, "url")
+		items[index] = item
+		changed = true
+	}
+	if !changed {
+		return body
+	}
+	updatedData, err := json.Marshal(items)
+	if err != nil {
+		return body
+	}
+	payload["data"] = updatedData
+	updated, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return updated
+}
+
+func (s *OpenAIGatewayService) downloadOpenAIImageForClient(
+	ctx context.Context,
+	account *Account,
+	proxyURL string,
+	imageURL string,
+) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Accept", "image/*,*/*;q=0.8")
+	if ua := account.GetOpenAIUserAgent(); ua != "" {
+		req.Header.Set("User-Agent", ua)
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+	limit := int64(20 << 20)
+	if configured := resolveUpstreamResponseReadLimit(s.cfg); configured > 0 && configured < limit {
+		limit = configured
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(data)) > limit {
+		return nil, "", fmt.Errorf("image exceeds %d bytes", limit)
+	}
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = detectedImageContentType(data)
+	}
+	if contentType == "" {
+		return nil, "", errors.New("upstream response is not an image")
+	}
+	return data, contentType, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(

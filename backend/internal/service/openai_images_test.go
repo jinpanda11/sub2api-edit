@@ -1445,6 +1445,61 @@ func TestExtractOpenAIImagesBillableCountFromJSONBytes_CompletedEvent(t *testing
 	require.Equal(t, 1, extractOpenAIImagesBillableCountFromJSONBytes(body))
 }
 
+func TestOpenAIGatewayServiceMaterializesURLOnlyImageForB64JSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"image/jpeg"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte("jpeg-image-bytes"))),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			AllowPrivateHosts: true,
+			AllowInsecureHTTP: true,
+		}}},
+		httpUpstream: upstream,
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"created":1710000000,"data":[{"url":"https://cdn.example/image.jpg"}]}`)),
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	usage, count, _, err := svc.handleOpenAIImagesNonStreamingResponse(
+		context.Background(), resp, c,
+		&Account{ID: 7, Type: AccountTypeAPIKey, Concurrency: 1}, "http://proxy:8080", "b64_json",
+	)
+	require.NoError(t, err)
+	require.Equal(t, OpenAIUsage{}, usage)
+	require.Equal(t, 1, count)
+	require.Equal(t, "image/jpeg", gjson.Get(rec.Body.String(), "data.0.mime_type").String())
+	require.Equal(t, "", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.NotEmpty(t, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "http://proxy:8080", upstream.lastProxyURL)
+}
+
+func TestOpenAIGatewayServiceKeepsExplicitURLImageResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"url":"https://cdn.example/image.png"}]}`)),
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	_, count, _, err := svc.handleOpenAIImagesNonStreamingResponse(
+		context.Background(), resp, c,
+		&Account{ID: 7, Type: AccountTypeAPIKey}, "", "url",
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.Equal(t, "https://cdn.example/image.png", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Empty(t, upstream.requests)
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

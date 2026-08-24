@@ -34,6 +34,7 @@ export default {
     generating: '生成中...',
     generateSuccess: '图片已生成',
     generateFailed: '图片生成失败',
+    downloadFailed: '图片下载失败，请检查图片资源是否仍然可访问',
     tabResults: '本次结果',
     tabGallery: '画廊',
     refresh: '刷新',

@@ -34,6 +34,7 @@ export default {
     generating: 'Generating...',
     generateSuccess: 'Image generated',
     generateFailed: 'Image generation failed',
+    downloadFailed: 'Image download failed. Check that the image resource is still available.',
     tabResults: 'Results',
     tabGallery: 'Gallery',
     refresh: 'Refresh',

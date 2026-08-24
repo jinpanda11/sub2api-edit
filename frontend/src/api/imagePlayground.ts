@@ -32,12 +32,61 @@ export interface GeneratedImage {
   /** b64_json 时转成的 data URL；url 时直接使用网关返回的 URL */
   dataUrl?: string
   url?: string
+  mimeType?: string
   revised_prompt?: string
 }
 
 export interface ImageGenerateResult {
   created: number
   data: GeneratedImage[]
+}
+
+function splitDataUrl(value: string): { mimeType: string; base64: string } | null {
+  const match = value.trim().match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$/is)
+  if (!match) return null
+  return { mimeType: match[1].toLowerCase(), base64: match[2].trim() }
+}
+
+function normalizeBase64Payload(value: string): { mimeType?: string; base64: string } {
+  const embedded = splitDataUrl(value)
+  return embedded ? embedded : { base64: value.trim() }
+}
+
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const embedded = splitDataUrl(dataUrl)
+  const mime = embedded?.mimeType || 'image/png'
+  const bytes = atob(embedded?.base64 || '')
+  const arr = new Uint8Array(bytes.length)
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+  return new Blob([arr], { type: mime })
+}
+
+export async function imageToBlob(image: GeneratedImage): Promise<Blob> {
+  if (image.dataUrl) return dataUrlToBlob(image.dataUrl)
+  if (!image.url) throw new Error('image resource is empty')
+  const response = await fetch(image.url)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const blob = await response.blob()
+  if (!blob.type.startsWith('image/')) throw new Error('response is not an image')
+  return blob
+}
+
+export function imageExtensionForMimeType(mimeType?: string): string {
+  if (mimeType?.toLowerCase() === 'image/jpeg') return 'jpg'
+  if (mimeType?.toLowerCase() === 'image/webp') return 'webp'
+  return 'png'
+}
+
+export async function downloadGeneratedImage(image: GeneratedImage): Promise<void> {
+  const blob = await imageToBlob(image)
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `sub2api-image-${Date.now()}.${imageExtensionForMimeType(blob.type || image.mimeType)}`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(objectUrl)
 }
 
 /** 图生图/遮罩编辑入参（multipart） */
@@ -50,14 +99,39 @@ export interface ImageEditInput {
   size?: string
 }
 
-function authHeaders(apiKey: string): HeadersInit {
-  return { Authorization: `Bearer ${apiKey}` }
+function authHeaders(apiKey: string, contentType?: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    ...(contentType ? { 'Content-Type': contentType } : {}),
+  }
 }
 
-function normalizeGeneratedImage(item: { b64_json?: string; url?: string; revised_prompt?: string }): GeneratedImage {
-  const out: GeneratedImage = { revised_prompt: item.revised_prompt }
-  if (item.b64_json) {
-    out.dataUrl = `data:image/png;base64,${item.b64_json}`
+function normalizeMimeType(value?: string): string | undefined {
+  const mime = value?.trim().toLowerCase()
+  return mime && mime.startsWith('image/') ? mime.split(';', 1)[0] : undefined
+}
+
+function mimeTypeFromFormat(value?: string): string | undefined {
+  const format = value?.trim().toLowerCase()
+  if (format === 'jpeg' || format === 'jpg') return 'image/jpeg'
+  if (format === 'webp') return 'image/webp'
+  if (format === 'png') return 'image/png'
+  return undefined
+}
+
+function normalizeGeneratedImage(item: {
+  b64_json?: string
+  url?: string
+  revised_prompt?: string
+  mime_type?: string
+  content_type?: string
+  output_format?: string
+}): GeneratedImage {
+  const normalized = item.b64_json ? normalizeBase64Payload(item.b64_json) : null
+  const mimeType = normalized?.mimeType || normalizeMimeType(item.mime_type || item.content_type) || mimeTypeFromFormat(item.output_format) || 'image/png'
+  const out: GeneratedImage = { revised_prompt: item.revised_prompt, mimeType }
+  if (normalized) {
+    out.dataUrl = `data:${mimeType};base64,${normalized.base64}`
   } else if (item.url) {
     out.url = item.url
   }
@@ -87,7 +161,7 @@ export async function listAvailableModels(apiKey: string): Promise<string[]> {
 export async function generateImage(apiKey: string, params: ImageGenerateParams): Promise<ImageGenerateResult> {
   const response = await fetch(buildGatewayUrl('/v1/images/generations'), {
     method: 'POST',
-    headers: authHeaders(apiKey),
+    headers: authHeaders(apiKey, 'application/json'),
     body: JSON.stringify({
       model: params.model,
       prompt: params.prompt,
