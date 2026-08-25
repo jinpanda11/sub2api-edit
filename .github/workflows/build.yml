@@ -24,7 +24,9 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.6'
+          required_go=$(awk '$1 == "go" { print $2; exit }' backend/go.mod)
+          test -n "$required_go"
+          go version | grep -q "go${required_go}"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
