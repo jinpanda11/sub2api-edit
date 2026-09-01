@@ -41,6 +41,46 @@ export interface ImageGenerateResult {
   data: GeneratedImage[]
 }
 
+export type ImageTaskStatus = 'processing' | 'completed' | 'failed'
+
+export interface ImageTaskError {
+  type?: string
+  code?: string
+  message?: string
+}
+
+export interface ImageTaskResult {
+  created?: number
+  data?: Array<{
+    b64_json?: string
+    url?: string
+    revised_prompt?: string
+    mime_type?: string
+    content_type?: string
+    output_format?: string
+  }>
+}
+
+export interface ImageTask {
+  id: string
+  task_id: string
+  object: string
+  status: ImageTaskStatus
+  http_status?: number
+  image_url?: string
+  result?: ImageTaskResult
+  error?: ImageTaskError
+  created_at: number
+  completed_at?: number
+  expires_at: number
+  poll_url?: string
+}
+
+export interface ImageTaskResponse {
+  task: ImageTask
+  retryAfterSeconds: number
+}
+
 function splitDataUrl(value: string): { mimeType: string; base64: string } | null {
   const match = value.trim().match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$/is)
   if (!match) return null
@@ -138,6 +178,29 @@ function normalizeGeneratedImage(item: {
   return out
 }
 
+function normalizeImageResult(result: ImageTaskResult | ImageGenerateResult): ImageGenerateResult {
+  return {
+    created: result.created ?? 0,
+    data: (result.data || []).map(normalizeGeneratedImage),
+  }
+}
+
+function parseRetryAfter(response: Response): number {
+  const value = Number.parseInt(response.headers.get('Retry-After') || '', 10)
+  return Number.isFinite(value) && value > 0 ? value : 3
+}
+
+async function createImageRequestError(response: Response): Promise<Error & { status?: number; code?: string; type?: string }> {
+  const body = await response.json().catch(() => null)
+  const errorBody = body?.error
+  const message = errorBody?.message || body?.message || `HTTP ${response.status}`
+  const error = new Error(message) as Error & { status?: number; code?: string; type?: string }
+  error.status = response.status
+  error.code = errorBody?.code
+  error.type = errorBody?.type
+  return error
+}
+
 /**
  * 获取用户 API Key 可用的模型列表（OpenAI 兼容 /v1/models）。
  * 返回模型 id 数组；失败时由调用方回退到内置模型清单。
@@ -152,6 +215,77 @@ export async function listAvailableModels(apiKey: string): Promise<string[]> {
   return data.map((m) => m.id).filter((id): id is string => Boolean(id))
 }
 
+function generationBody(params: ImageGenerateParams): Record<string, unknown> {
+  return {
+    model: params.model,
+    prompt: params.prompt,
+    n: params.n ?? 1,
+    size: params.size,
+    quality: params.quality,
+    output_format: params.output_format,
+    output_compression: params.output_compression,
+    moderation: params.moderation,
+    transparent_output: params.transparent_output,
+    seed: params.seed,
+    response_format: params.response_format ?? 'b64_json',
+  }
+}
+
+function buildEditForm(input: ImageEditInput): FormData {
+  const form = new FormData()
+  form.append('image', input.image, 'input.png')
+  if (input.mask) form.append('mask', input.mask, 'mask.png')
+  form.append('prompt', input.prompt)
+  form.append('model', input.model)
+  form.append('n', String(input.n ?? 1))
+  if (input.size) form.append('size', input.size)
+  return form
+}
+
+export async function generateImageAsync(
+  apiKey: string,
+  params: ImageGenerateParams,
+  signal?: AbortSignal,
+): Promise<ImageTaskResponse> {
+  const response = await fetch(buildGatewayUrl('/v1/images/generations/async'), {
+    method: 'POST',
+    headers: authHeaders(apiKey, 'application/json'),
+    body: JSON.stringify(generationBody(params)),
+    signal,
+  })
+  if (!response.ok) throw await createImageRequestError(response)
+  return { task: await response.json() as ImageTask, retryAfterSeconds: parseRetryAfter(response) }
+}
+
+export async function editImageAsync(
+  apiKey: string,
+  input: ImageEditInput,
+  signal?: AbortSignal,
+): Promise<ImageTaskResponse> {
+  const response = await fetch(buildGatewayUrl('/v1/images/edits/async'), {
+    method: 'POST',
+    headers: authHeaders(apiKey),
+    body: buildEditForm(input),
+    signal,
+  })
+  if (!response.ok) throw await createImageRequestError(response)
+  return { task: await response.json() as ImageTask, retryAfterSeconds: parseRetryAfter(response) }
+}
+
+export async function pollImageTask(apiKey: string, taskId: string, signal?: AbortSignal): Promise<ImageTaskResponse> {
+  const response = await fetch(buildGatewayUrl(`/v1/images/tasks/${encodeURIComponent(taskId)}`), {
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await createImageRequestError(response)
+  return { task: await response.json() as ImageTask, retryAfterSeconds: parseRetryAfter(response) }
+}
+
+export function normalizeImageTaskResult(task: ImageTask): ImageGenerateResult {
+  if (task.status !== 'completed' || !task.result) throw new Error('image task completed without a result')
+  return normalizeImageResult(task.result)
+}
+
 /**
  * 文生图（同步）：POST /v1/images/generations
  * 网关原样透传请求体（仅改写模型名），因此原版 Playground 的
@@ -162,61 +296,23 @@ export async function generateImage(apiKey: string, params: ImageGenerateParams)
   const response = await fetch(buildGatewayUrl('/v1/images/generations'), {
     method: 'POST',
     headers: authHeaders(apiKey, 'application/json'),
-    body: JSON.stringify({
-      model: params.model,
-      prompt: params.prompt,
-      n: params.n ?? 1,
-      size: params.size,
-      quality: params.quality,
-      output_format: params.output_format,
-      output_compression: params.output_compression,
-      moderation: params.moderation,
-      transparent_output: params.transparent_output,
-      seed: params.seed,
-      response_format: params.response_format ?? 'b64_json',
-    }),
+    body: JSON.stringify(generationBody(params)),
   })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    const message = body?.error?.message || `HTTP ${response.status}`
-    const error = new Error(message)
-    ;(error as any).status = response.status
-    ;(error as any).code = body?.error?.code
-    throw error
-  }
+  if (!response.ok) throw await createImageRequestError(response)
   const result: ImageGenerateResult = await response.json()
-  result.data = (result.data || []).map(normalizeGeneratedImage)
-  return result
+  return normalizeImageResult(result)
 }
 
 /**
  * 图生图 / 遮罩编辑（同步）：POST /v1/images/edits（multipart）
  */
 export async function editImage(apiKey: string, input: ImageEditInput): Promise<ImageGenerateResult> {
-  const form = new FormData()
-  form.append('image', input.image, 'input.png')
-  if (input.mask) {
-    form.append('mask', input.mask, 'mask.png')
-  }
-  form.append('prompt', input.prompt)
-  form.append('model', input.model)
-  form.append('n', String(input.n ?? 1))
-  if (input.size) form.append('size', input.size)
-
   const response = await fetch(buildGatewayUrl('/v1/images/edits'), {
     method: 'POST',
     headers: authHeaders(apiKey),
-    body: form,
+    body: buildEditForm(input),
   })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    const message = body?.error?.message || `HTTP ${response.status}`
-    const error = new Error(message)
-    ;(error as any).status = response.status
-    ;(error as any).code = body?.error?.code
-    throw error
-  }
+  if (!response.ok) throw await createImageRequestError(response)
   const result: ImageGenerateResult = await response.json()
-  result.data = (result.data || []).map(normalizeGeneratedImage)
-  return result
+  return normalizeImageResult(result)
 }

@@ -255,6 +255,10 @@
 
           <!-- 本次结果 -->
           <div v-if="galleryTab === 'results'" class="card">
+            <div v-if="generating || lastGenerationDurationSeconds !== null" class="border-b border-gray-100 px-6 py-3 text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+              <span v-if="generating">{{ formatGenerationDuration(generationElapsedSeconds, 'elapsed') }}</span>
+              <span v-else>{{ formatGenerationDuration(lastGenerationDurationSeconds!, 'completed') }}</span>
+            </div>
             <div v-if="results.length" class="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2 xl:grid-cols-3">
               <div v-for="(img, idx) in results" :key="idx" class="group relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
                 <img
@@ -374,16 +378,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { keysAPI } from '@/api'
 import {
   dataUrlToBlob,
-  editImage,
-  generateImage,
+  editImageAsync,
+  generateImageAsync,
   listAvailableModels,
+  normalizeImageTaskResult,
+  pollImageTask,
   downloadGeneratedImage,
   type GeneratedImage,
 } from '@/api/imagePlayground'
@@ -482,6 +488,15 @@ const maskEditorOpen = ref(false)
 const maskEditorImage = ref('')
 const previewRecord = ref<GalleryRecord | null>(null)
 const modelOptions = ref<string[]>([])
+const generationElapsedSeconds = ref(0)
+const lastGenerationDurationSeconds = ref<number | null>(null)
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+let requestController: AbortController | null = null
+let generationSequence = 0
+let generationStartedAt: number | null = null
+const MAX_POLL_DURATION_MS = 30 * 60 * 1000
 
 // ---------- 计算属性 ----------
 const usableKeys = computed(() =>
@@ -539,69 +554,192 @@ async function loadGallery() {
 }
 
 // ---------- 生成 ----------
+function formatGenerationDuration(seconds: number, type: 'elapsed' | 'completed'): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  const key = minutes > 0 ? `generation${type === 'elapsed' ? 'Elapsed' : 'Completed'}Minutes` : `generation${type === 'elapsed' ? 'Elapsed' : 'Completed'}Seconds`
+  return t(`imagePlayground.${key}`, { minutes, seconds: remainingSeconds })
+}
+
+function updateGenerationElapsed() {
+  if (generationStartedAt === null) return
+  generationElapsedSeconds.value = Math.floor((Date.now() - generationStartedAt) / 1000)
+}
+
+function stopGenerationClock(clearCurrent = true) {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+  generationStartedAt = null
+  if (clearCurrent) generationElapsedSeconds.value = 0
+}
+
+function startGenerationClock() {
+  stopGenerationClock()
+  generationStartedAt = Date.now()
+  generationElapsedSeconds.value = 0
+  elapsedTimer = setInterval(updateGenerationElapsed, 1000)
+}
+
+function stopImageTaskPolling() {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  requestController?.abort()
+  requestController = null
+}
+
+async function saveGeneratedResult(
+  result: { data: GeneratedImage[] },
+  snapshot: {
+    prompt: string
+    model: string
+    size: string
+    quality: typeof quality.value
+    mode: typeof mode.value
+  },
+  isCurrent: () => boolean,
+) {
+  if (!isCurrent()) return
+  results.value = result.data
+  galleryTab.value = 'results'
+
+  if (result.data.length) {
+    await galleryAdd({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt: snapshot.prompt,
+      model: snapshot.model,
+      size: snapshot.size,
+      quality: snapshot.quality,
+      mode: snapshot.mode,
+      images: result.data.map((d) => ({
+        dataUrl: d.dataUrl || '',
+        url: d.url,
+        mimeType: d.mimeType,
+        revised_prompt: d.revised_prompt,
+      })),
+      favorite: false,
+      createdAt: Date.now(),
+    })
+    if (!isCurrent()) return
+    await loadGallery()
+  }
+}
+
 async function handleGenerate() {
   if (!selectedKey.value || !prompt.value.trim()) return
   if (mode.value === 'edit' && !referenceBlob.value) return
 
+  stopImageTaskPolling()
+  const sequence = ++generationSequence
+  const controller = new AbortController()
+  requestController = controller
+  const snapshot = {
+    apiKey: selectedKey.value.key,
+    prompt: prompt.value.trim(),
+    model: model.value.trim(),
+    size: resolvedSize.value,
+    quality: quality.value,
+    mode: mode.value,
+    count: count.value,
+    outputFormat: outputFormat.value,
+    outputCompression: outputCompression.value,
+    moderation: moderation.value,
+    transparentOutput: transparentOutput.value,
+    seed: seed.value ?? undefined,
+    image: referenceBlob.value,
+    mask: maskBlob.value,
+  }
+  let deadline = Date.now() + MAX_POLL_DURATION_MS
+  lastGenerationDurationSeconds.value = null
   generating.value = true
   errorMessage.value = ''
-  try {
-    const commonParams = {
-      model: model.value.trim(),
-      prompt: prompt.value.trim(),
-      n: count.value,
-      size: resolvedSize.value,
-      quality: quality.value,
-      output_format: outputFormat.value,
-      moderation: moderation.value,
-      seed: seed.value ?? undefined,
-    }
-    let result
-    if (mode.value === 'generation') {
-      result = await generateImage(selectedKey.value.key, {
-        ...commonParams,
-        transparent_output: transparentOutput.value,
-        ...(outputFormat.value !== 'png' ? { output_compression: outputCompression.value } : {}),
-      })
-    } else {
-      result = await editImage(selectedKey.value.key, {
-        image: referenceBlob.value!,
-        mask: maskBlob.value,
-        prompt: prompt.value.trim(),
-        model: model.value.trim(),
-        n: count.value,
-        size: resolvedSize.value,
-      })
-    }
-    results.value = result.data
-    galleryTab.value = 'results'
+  startGenerationClock()
 
-    // 存入画廊（本地 IndexedDB）
-    if (result.data.length) {
-      await galleryAdd({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        prompt: prompt.value.trim(),
-        model: model.value.trim(),
-        size: resolvedSize.value,
-        quality: quality.value,
-        mode: mode.value,
-        images: result.data.map((d) => ({
-          dataUrl: d.dataUrl || '',
-          url: d.url,
-          mimeType: d.mimeType,
-          revised_prompt: d.revised_prompt,
-        })),
-        favorite: false,
-        createdAt: Date.now(),
-      })
-      await loadGallery()
-    }
-    appStore.showSuccess(t('imagePlayground.generateSuccess'))
-  } catch (error: any) {
-    errorMessage.value = error?.message || t('imagePlayground.generateFailed')
+  const isCurrent = () => sequence === generationSequence
+  const finishWithError = (message: string) => {
+    if (!isCurrent()) return
+    stopImageTaskPolling()
+    stopGenerationClock()
+    errorMessage.value = message
     appStore.showError(t('imagePlayground.generateFailed'))
-  } finally {
     generating.value = false
+  }
+
+  const poll = async (taskId: string, delaySeconds: number): Promise<void> => {
+    if (!isCurrent()) return
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      finishWithError(t('imagePlayground.generateTimeout'))
+      return
+    }
+    pollTimer = setTimeout(async () => {
+      pollTimer = null
+      if (!isCurrent()) return
+      try {
+        const response = await pollImageTask(snapshot.apiKey, taskId, controller.signal)
+        if (!isCurrent()) return
+        const task = response.task
+        if (task.status === 'processing') {
+          await poll(task.task_id || task.id, response.retryAfterSeconds)
+          return
+        }
+        if (task.status === 'completed') {
+          const result = normalizeImageTaskResult(task)
+          await saveGeneratedResult(result, snapshot, isCurrent)
+          if (!isCurrent()) return
+          updateGenerationElapsed()
+          lastGenerationDurationSeconds.value = generationElapsedSeconds.value
+          stopGenerationClock(false)
+          generating.value = false
+          requestController = null
+          appStore.showSuccess(t('imagePlayground.generateSuccess'))
+          return
+        }
+        finishWithError(task.error?.message || t('imagePlayground.generateFailed'))
+      } catch (error: any) {
+        if (error?.name === 'AbortError' || !isCurrent()) return
+        finishWithError(error?.message || t('imagePlayground.generateFailed'))
+      }
+    }, Math.min(Math.max(delaySeconds, 1) * 1000, remaining))
+  }
+
+  try {
+    const taskResponse = snapshot.mode === 'generation'
+      ? await generateImageAsync(snapshot.apiKey, {
+          model: snapshot.model,
+          prompt: snapshot.prompt,
+          n: snapshot.count,
+          size: snapshot.size,
+          quality: snapshot.quality,
+          output_format: snapshot.outputFormat,
+          moderation: snapshot.moderation,
+          seed: snapshot.seed,
+          transparent_output: snapshot.transparentOutput,
+          ...(snapshot.outputFormat !== 'png' ? { output_compression: snapshot.outputCompression } : {}),
+        }, controller.signal)
+      : await editImageAsync(snapshot.apiKey, {
+          image: snapshot.image!,
+          mask: snapshot.mask,
+          prompt: snapshot.prompt,
+          model: snapshot.model,
+          n: snapshot.count,
+          size: snapshot.size,
+        }, controller.signal)
+    if (!isCurrent()) return
+    const taskExpiresAt = taskResponse.task.expires_at * 1000
+    if (Number.isFinite(taskExpiresAt) && taskExpiresAt > 0) {
+      deadline = Math.min(deadline, taskExpiresAt)
+    }
+    await poll(taskResponse.task.task_id || taskResponse.task.id, taskResponse.retryAfterSeconds)
+  } catch (error: any) {
+    if (error?.name === 'AbortError' || !isCurrent()) return
+    const message = error?.status === 404
+      ? t('imagePlayground.asyncUnavailable')
+      : error?.message || t('imagePlayground.generateFailed')
+    finishWithError(message)
   }
 }
 
@@ -615,6 +753,14 @@ function useAsReference(img: GeneratedImage) {
   mode.value = 'edit'
   prompt.value = ''
 }
+
+watch(referenceImage, (value) => {
+  if (!value) {
+    referenceBlob.value = null
+  } else if (!referenceBlob.value && value.startsWith('data:image/')) {
+    referenceBlob.value = dataUrlToBlob(value)
+  }
+})
 
 function openMaskEditorFromResult(img: GeneratedImage) {
   if (!img.dataUrl) return
@@ -664,5 +810,11 @@ async function removeRecord(record: GalleryRecord) {
 onMounted(() => {
   loadKeys()
   loadGallery()
+})
+
+onUnmounted(() => {
+  generationSequence++
+  stopImageTaskPolling()
+  stopGenerationClock()
 })
 </script>

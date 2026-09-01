@@ -2,8 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   dataUrlToBlob,
   downloadGeneratedImage,
+  editImageAsync,
   generateImage,
+  generateImageAsync,
   imageToBlob,
+  normalizeImageTaskResult,
+  pollImageTask,
 } from './imagePlayground'
 
 const originalFetch = globalThis.fetch
@@ -70,6 +74,61 @@ describe('image playground response handling', () => {
 
     expect(result.data[0].url).toBe('https://cdn.example/image.jpg')
     expect(result.data[0].mimeType).toBe('image/jpeg')
+  })
+})
+
+describe('async image tasks', () => {
+  it('submits generation tasks and reads the retry interval', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(response({ id: 'imgtask_1', task_id: 'imgtask_1', status: 'processing' }, {
+      status: 202,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '5' },
+    }))
+
+    const result = await generateImageAsync('sk-test', { model: 'gpt-image-2', prompt: 'cat' })
+
+    expect(result.task.task_id).toBe('imgtask_1')
+    expect(result.retryAfterSeconds).toBe(5)
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('/v1/images/generations/async')
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      headers: { Authorization: 'Bearer sk-test', 'Content-Type': 'application/json' },
+    })
+  })
+
+  it('submits edit tasks as multipart requests', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(response({ id: 'imgtask_2', task_id: 'imgtask_2', status: 'processing' }, { status: 202 }))
+    const image = new Blob(['image'], { type: 'image/png' })
+
+    const result = await editImageAsync('sk-test', { image, prompt: 'edit', model: 'gpt-image-2' })
+    const request = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+
+    expect(result.task.id).toBe('imgtask_2')
+    expect(request[0]).toContain('/v1/images/edits/async')
+    expect(request[1]).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer sk-test' } })
+    expect(request[1].body).toBeInstanceOf(FormData)
+  })
+
+  it('polls and normalizes a completed task result', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(response({
+      id: 'imgtask_3', task_id: 'imgtask_3', status: 'completed', created_at: 1, expires_at: 2,
+      result: { created: 1, data: [{ b64_json: 'data:image/webp;base64,aGVsbG8=', mime_type: 'image/webp' }] },
+    }))
+
+    const task = await pollImageTask('sk-test', 'imgtask_3')
+    const result = normalizeImageTaskResult(task.task)
+
+    expect(task.retryAfterSeconds).toBe(3)
+    expect(result.data[0].dataUrl).toBe('data:image/webp;base64,aGVsbG8=')
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('/v1/images/tasks/imgtask_3')
+  })
+
+  it('exposes async feature errors with the HTTP status', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(response({ error: { type: 'not_found_error', message: 'async image tasks are not enabled' } }, { status: 404 }))
+
+    await expect(generateImageAsync('sk-test', { model: 'gpt-image-2', prompt: 'cat' })).rejects.toMatchObject({
+      status: 404,
+      message: 'async image tasks are not enabled',
+    })
   })
 })
 

@@ -16,7 +16,19 @@ export { userAPI } from './user'
 export { redeemAPI, type RedeemHistoryItem } from './redeem'
 export { lotteryAPI, type LotteryStatus, type LotteryDrawResult, type LotteryRecordItem } from './lottery'
 export { rankingAPI, type ConsumptionRanking, type ConsumptionRankingEntry } from './ranking'
-export { generateImage, editImage, listAvailableModels, type ImageGenerateResult, type GeneratedImage } from './imagePlayground'
+export {
+  editImage,
+  editImageAsync,
+  generateImage,
+  generateImageAsync,
+  listAvailableModels,
+  normalizeImageTaskResult,
+  pollImageTask,
+  type GeneratedImage,
+  type ImageGenerateResult,
+  type ImageTask,
+  type ImageTaskResponse,
+} from './imagePlayground'
 export { paymentAPI } from './payment'
 export { userGroupsAPI } from './groups'
 export { userChannelsAPI } from './channels'
