@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   dataUrlToBlob,
   downloadGeneratedImage,
+  imageToBlob,
   editImageAsync,
   generateImage,
   generateImageAsync,
-  imageToBlob,
   normalizeImageTaskResult,
   pollImageTask,
 } from './imagePlayground'
@@ -67,7 +67,7 @@ describe('image playground response handling', () => {
   it('keeps URL-only results available as a download source', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(response({
       created: 1,
-      data: [{ url: 'https://cdn.example/image.jpg', output_format: 'jpeg' }],
+      data: [{ url: 'https://cdn.example/image.jpg', output_format: 'jpeg', proxy_url: '/v1/images/tasks/imgtask_1/images/0' }],
     }))
 
     const result = await generateImage('sk-test', { model: 'gpt-image-2', prompt: 'cat' })
@@ -111,7 +111,7 @@ describe('async image tasks', () => {
   it('polls and normalizes a completed task result', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(response({
       id: 'imgtask_3', task_id: 'imgtask_3', status: 'completed', created_at: 1, expires_at: 2,
-      result: { created: 1, data: [{ b64_json: 'data:image/webp;base64,aGVsbG8=', mime_type: 'image/webp' }] },
+      result: { created: 1, data: [{ b64_json: 'data:image/webp;base64,aGVsbG8=', mime_type: 'image/webp', proxy_url: '/v1/images/tasks/imgtask_3/images/0' }] },
     }))
 
     const task = await pollImageTask('sk-test', 'imgtask_3')
@@ -119,6 +119,7 @@ describe('async image tasks', () => {
 
     expect(task.retryAfterSeconds).toBe(3)
     expect(result.data[0].dataUrl).toBe('data:image/webp;base64,aGVsbG8=')
+    expect(result.data[0].proxyUrl).toBe('/v1/images/tasks/imgtask_3/images/0')
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('/v1/images/tasks/imgtask_3')
   })
 
@@ -138,6 +139,21 @@ describe('image playground downloads', () => {
     expect(blob.type).toBe('image/jpeg')
   })
 
+  it('downloads a same-origin proxy image with the API key', async () => {
+    const imageBlob = new Blob(['image'], { type: 'image/jpeg' })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(imageBlob),
+    })
+
+    await imageToBlob({ proxyUrl: '/v1/images/tasks/imgtask_1/images/0', url: 'https://r2.example/image.jpg' }, { apiKey: 'sk-test' })
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/v1/images/tasks/imgtask_1/images/0', {
+      headers: { Authorization: 'Bearer sk-test' },
+      cache: 'no-store',
+    })
+  })
+
   it('downloads a remote image as a local blob', async () => {
     const imageBlob = new Blob(['image'], { type: 'image/jpeg' })
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -152,7 +168,10 @@ describe('image playground downloads', () => {
 
     await downloadGeneratedImage({ url: 'https://cdn.example/image.jpg', mimeType: 'image/jpeg' })
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('https://cdn.example/image.jpg')
+    expect(globalThis.fetch).toHaveBeenCalledWith('https://cdn.example/image.jpg', {
+      headers: undefined,
+      cache: 'no-store',
+    })
     expect(createObjectURL).toHaveBeenCalledWith(imageBlob)
     expect(click).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:image')

@@ -264,19 +264,20 @@
                 <img
                   :src="img.dataUrl || img.url"
                   alt="generated"
-                  class="aspect-square w-full object-cover"
+                  class="aspect-square w-full cursor-pointer object-cover"
                   loading="lazy"
+                  @click="openResultsPreview"
                 />
                 <!-- 操作层 -->
-                <div class="absolute inset-0 flex flex-col justify-end gap-1 bg-gradient-to-t from-black/70 via-transparent to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
+                <div class="pointer-events-none absolute inset-0 flex flex-col justify-end gap-1 bg-gradient-to-t from-black/70 via-transparent to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
                   <div class="flex flex-wrap gap-1.5">
-                    <button type="button" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="useAsReference(img)">
+                    <button type="button" class="pointer-events-auto rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="useAsReference(img)">
                       {{ t('imagePlayground.actionEdit') }}
                     </button>
-                    <button type="button" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="openMaskEditorFromResult(img)">
+                    <button type="button" class="pointer-events-auto rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white" @click="openMaskEditorFromResult(img)">
                       {{ t('imagePlayground.actionMask') }}
                     </button>
-                    <button type="button" :disabled="downloadingImage" class="rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60" @click="downloadImage(img)">
+                    <button type="button" :disabled="downloadingImage" class="pointer-events-auto rounded-lg bg-white/90 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60" @click="downloadImage(img)">
                       {{ t('imagePlayground.actionDownload') }}
                     </button>
                   </div>
@@ -386,6 +387,7 @@ import { keysAPI } from '@/api'
 import {
   dataUrlToBlob,
   editImageAsync,
+  imageToBlob,
   generateImageAsync,
   listAvailableModels,
   normalizeImageTaskResult,
@@ -594,6 +596,7 @@ function stopImageTaskPolling() {
 async function saveGeneratedResult(
   result: { data: GeneratedImage[] },
   snapshot: {
+    apiKeyId: number
     prompt: string
     model: string
     size: string
@@ -609,6 +612,7 @@ async function saveGeneratedResult(
   if (result.data.length) {
     await galleryAdd({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      apiKeyId: snapshot.apiKeyId,
       prompt: snapshot.prompt,
       model: snapshot.model,
       size: snapshot.size,
@@ -617,6 +621,8 @@ async function saveGeneratedResult(
       images: result.data.map((d) => ({
         dataUrl: d.dataUrl || '',
         url: d.url,
+        proxyUrl: d.proxyUrl,
+        apiKeyId: snapshot.apiKeyId,
         mimeType: d.mimeType,
         revised_prompt: d.revised_prompt,
       })),
@@ -638,6 +644,7 @@ async function handleGenerate() {
   requestController = controller
   const snapshot = {
     apiKey: selectedKey.value.key,
+    apiKeyId: selectedKey.value.id,
     prompt: prompt.value.trim(),
     model: model.value.trim(),
     size: resolvedSize.value,
@@ -688,6 +695,7 @@ async function handleGenerate() {
         }
         if (task.status === 'completed') {
           const result = normalizeImageTaskResult(task)
+          result.data = result.data.map((image) => ({ ...image, apiKeyId: snapshot.apiKeyId }))
           await saveGeneratedResult(result, snapshot, isCurrent)
           if (!isCurrent()) return
           updateGenerationElapsed()
@@ -744,14 +752,53 @@ async function handleGenerate() {
 }
 
 // ---------- 图片操作 ----------
-function useAsReference(img: GeneratedImage) {
-  const dataUrl = img.dataUrl
-  if (!dataUrl) return
-  referenceImage.value = dataUrl
-  referenceBlob.value = dataUrlToBlob(dataUrl)
-  maskBlob.value = null
-  mode.value = 'edit'
-  prompt.value = ''
+function openResultsPreview() {
+  if (!results.value.length) return
+  previewRecord.value = {
+    id: 'current-results',
+    apiKeyId: results.value[0].apiKeyId,
+    prompt: prompt.value,
+    model: model.value,
+    size: resolvedSize.value,
+    quality: quality.value,
+    mode: mode.value,
+    images: results.value.map((image) => ({
+      dataUrl: image.dataUrl || '',
+      url: image.url,
+      proxyUrl: image.proxyUrl,
+      apiKeyId: image.apiKeyId,
+      mimeType: image.mimeType,
+      revised_prompt: image.revised_prompt,
+    })),
+    favorite: false,
+    createdAt: Date.now(),
+  }
+}
+
+async function useAsReference(img: GeneratedImage) {
+  try {
+    const keyId = img.apiKeyId
+    const apiKey = keyId === undefined
+      ? selectedKey.value?.key
+      : keys.value.find((key) => key.id === keyId)?.key
+    const blob = img.dataUrl
+      ? dataUrlToBlob(img.dataUrl)
+      : await imageToBlob(img, { apiKey })
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error || new Error('failed to read image'))
+      reader.readAsDataURL(blob)
+    })
+    referenceImage.value = dataUrl
+    referenceBlob.value = blob
+    maskBlob.value = null
+    mode.value = 'edit'
+    prompt.value = ''
+  } catch (error) {
+    console.error('Failed to use image as reference:', error)
+    appStore.showError(t('imagePlayground.referenceImageFailed'))
+  }
 }
 
 watch(referenceImage, (value) => {
@@ -762,10 +809,10 @@ watch(referenceImage, (value) => {
   }
 })
 
-function openMaskEditorFromResult(img: GeneratedImage) {
-  if (!img.dataUrl) return
-  useAsReference(img)
-  maskEditorImage.value = img.dataUrl
+async function openMaskEditorFromResult(img: GeneratedImage) {
+  await useAsReference(img)
+  if (!referenceImage.value) return
+  maskEditorImage.value = referenceImage.value
   maskEditorOpen.value = true
 }
 
@@ -786,7 +833,11 @@ async function downloadImage(img: GeneratedImage) {
   if (downloadingImage.value) return
   downloadingImage.value = true
   try {
-    await downloadGeneratedImage(img)
+    const keyId = img.apiKeyId
+    const apiKey = keyId === undefined
+      ? selectedKey.value?.key
+      : keys.value.find((key) => key.id === keyId)?.key
+    await downloadGeneratedImage(img, { apiKey })
   } catch (error) {
     console.error('Failed to download image:', error)
     appStore.showError(t('imagePlayground.downloadFailed'))

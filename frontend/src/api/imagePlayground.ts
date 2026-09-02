@@ -32,6 +32,8 @@ export interface GeneratedImage {
   /** b64_json 时转成的 data URL；url 时直接使用网关返回的 URL */
   dataUrl?: string
   url?: string
+  proxyUrl?: string
+  apiKeyId?: number
   mimeType?: string
   revised_prompt?: string
 }
@@ -58,6 +60,7 @@ export interface ImageTaskResult {
     mime_type?: string
     content_type?: string
     output_format?: string
+    proxy_url?: string
   }>
 }
 
@@ -101,10 +104,14 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([arr], { type: mime })
 }
 
-export async function imageToBlob(image: GeneratedImage): Promise<Blob> {
+export async function imageToBlob(image: GeneratedImage, options: ImageDownloadOptions = {}): Promise<Blob> {
   if (image.dataUrl) return dataUrlToBlob(image.dataUrl)
-  if (!image.url) throw new Error('image resource is empty')
-  const response = await fetch(image.url)
+  const resourceURL = image.proxyUrl || image.url
+  if (!resourceURL) throw new Error('image resource is empty')
+  const response = await fetch(resourceURL, {
+    headers: image.proxyUrl && options.apiKey ? authHeaders(options.apiKey) : undefined,
+    cache: 'no-store',
+  })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   const blob = await response.blob()
   if (!blob.type.startsWith('image/')) throw new Error('response is not an image')
@@ -117,8 +124,8 @@ export function imageExtensionForMimeType(mimeType?: string): string {
   return 'png'
 }
 
-export async function downloadGeneratedImage(image: GeneratedImage): Promise<void> {
-  const blob = await imageToBlob(image)
+export async function downloadGeneratedImage(image: GeneratedImage, options: ImageDownloadOptions = {}): Promise<void> {
+  const blob = await imageToBlob(image, options)
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = objectUrl
@@ -137,6 +144,10 @@ export interface ImageEditInput {
   model: string
   n?: number
   size?: string
+}
+
+export interface ImageDownloadOptions {
+  apiKey?: string
 }
 
 function authHeaders(apiKey: string, contentType?: string): HeadersInit {
@@ -166,10 +177,11 @@ function normalizeGeneratedImage(item: {
   mime_type?: string
   content_type?: string
   output_format?: string
+  proxy_url?: string
 }): GeneratedImage {
   const normalized = item.b64_json ? normalizeBase64Payload(item.b64_json) : null
   const mimeType = normalized?.mimeType || normalizeMimeType(item.mime_type || item.content_type) || mimeTypeFromFormat(item.output_format) || 'image/png'
-  const out: GeneratedImage = { revised_prompt: item.revised_prompt, mimeType }
+  const out: GeneratedImage = { revised_prompt: item.revised_prompt, mimeType, proxyUrl: item.proxy_url }
   if (normalized) {
     out.dataUrl = `data:${mimeType};base64,${normalized.base64}`
   } else if (item.url) {

@@ -6,6 +6,8 @@
 export interface GalleryImage {
   dataUrl: string
   url?: string
+  proxyUrl?: string
+  apiKeyId?: number
   mimeType?: string
   revised_prompt?: string
 }
@@ -14,6 +16,7 @@ export interface GalleryRecord {
   id: string
   prompt: string
   model: string
+  apiKeyId?: number
   size?: string
   quality?: string
   mode: 'generation' | 'edit'

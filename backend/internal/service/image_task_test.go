@@ -64,7 +64,16 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	require.Equal(t, ImageTaskStatusCompleted, completed.Status)
 	require.Equal(t, http.StatusOK, completed.HTTPStatus)
 	require.Equal(t, "https://example.test/image.png", completed.ImageURL)
-	require.JSONEq(t, string(result), string(completed.Result))
+	var completedResult struct {
+		Data []struct {
+			URL      string `json:"url"`
+			ProxyURL string `json:"proxy_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(completed.Result, &completedResult))
+	require.Len(t, completedResult.Data, 1)
+	require.Equal(t, "https://example.test/image.png", completedResult.Data[0].URL)
+	require.Equal(t, "/v1/images/tasks/"+created.ID+"/images/0", completedResult.Data[0].ProxyURL)
 	require.NotNil(t, completed.CompletedAt)
 }
 

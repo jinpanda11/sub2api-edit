@@ -41,6 +41,7 @@ export default {
     asyncUnavailable: '异步生图未启用，请先配置图片对象存储',
     generateTimeout: '图片生成超时，请稍后查看任务或重试',
     downloadFailed: '图片下载失败，请检查图片资源是否仍然可访问',
+    referenceImageFailed: '参考图加载失败，请检查图片资源是否仍然可访问',
     tabResults: '本次结果',
     tabGallery: '画廊',
     refresh: '刷新',

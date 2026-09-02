@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -239,19 +240,53 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 	if task == nil {
 		return nil
 	}
+	result := addImageTaskProxyURLs(task.ID, task.Result)
 	return &ImageTask{
 		ID:          task.ID,
 		TaskID:      task.ID,
 		Object:      "image.generation.task",
 		Status:      task.Status,
 		HTTPStatus:  task.HTTPStatus,
-		ImageURL:    firstImageTaskURL(task.Result),
-		Result:      task.Result,
+		ImageURL:    firstImageTaskURL(result),
+		Result:      result,
 		Error:       task.Error,
 		CreatedAt:   task.CreatedAt,
 		CompletedAt: task.CompletedAt,
 		ExpiresAt:   task.ExpiresAt,
 	}
+}
+
+func addImageTaskProxyURLs(taskID string, result json.RawMessage) json.RawMessage {
+	if len(result) == 0 || !json.Valid(result) {
+		return result
+	}
+	var response map[string]json.RawMessage
+	if json.Unmarshal(result, &response) != nil {
+		return result
+	}
+	var items []map[string]json.RawMessage
+	rawData, ok := response["data"]
+	if !ok || json.Unmarshal(rawData, &items) != nil {
+		return result
+	}
+	for i, item := range items {
+		proxyURL, err := json.Marshal("/v1/images/tasks/" + taskID + "/images/" + strconv.Itoa(i))
+		if err != nil {
+			continue
+		}
+		item["proxy_url"] = proxyURL
+		items[i] = item
+	}
+	updatedData, err := json.Marshal(items)
+	if err != nil {
+		return result
+	}
+	response["data"] = updatedData
+	updated, err := json.Marshal(response)
+	if err != nil {
+		return result
+	}
+	return updated
 }
 
 func firstImageTaskURL(result json.RawMessage) string {
@@ -260,7 +295,8 @@ func firstImageTaskURL(result json.RawMessage) string {
 	}
 	var response struct {
 		Data []struct {
-			URL string `json:"url"`
+			URL      string `json:"url"`
+			ProxyURL string `json:"proxy_url"`
 		} `json:"data"`
 	}
 	if json.Unmarshal(result, &response) != nil || len(response.Data) == 0 {

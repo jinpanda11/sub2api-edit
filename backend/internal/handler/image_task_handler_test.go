@@ -108,6 +108,58 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 
 // When object storage is not configured the feature is fully disabled: the
 // endpoints must return 404 without creating a task or writing to Redis.
+func TestAsyncImageHandlerDownloadImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png-data"))
+	}))
+	defer imageServer.Close()
+
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	store.tasks["imgtask_download"] = &service.ImageTaskRecord{
+		ID:        "imgtask_download",
+		UserID:    7,
+		APIKeyID:  9,
+		Status:    service.ImageTaskStatusCompleted,
+		Result:    json.RawMessage(`{"data":[{"url":"` + imageServer.URL + `/image.png"}]}`),
+		CreatedAt: 1,
+		ExpiresAt: 9999999999,
+	}
+	h := &AsyncImageHandler{tasks: service.NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)}
+	currentAPIKey := &service.APIKey{ID: 9, UserID: 7}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), currentAPIKey)
+		c.Next()
+	})
+	router.GET("/v1/images/tasks/:task_id/images/:index", h.DownloadImage)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/images/tasks/imgtask_download/images/0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "image/png", w.Header().Get("Content-Type"))
+	require.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
+	require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
+	require.Equal(t, "png-data", w.Body.String())
+
+	currentAPIKey = &service.APIKey{ID: 10, UserID: 7}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/images/tasks/imgtask_download/images/0", nil))
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	store.tasks["imgtask_processing"] = &service.ImageTaskRecord{
+		ID: "imgtask_processing", UserID: 7, APIKeyID: 9, Status: service.ImageTaskStatusProcessing,
+		CreatedAt: 1, ExpiresAt: 9999999999,
+	}
+	currentAPIKey = &service.APIKey{ID: 9, UserID: 7}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/images/tasks/imgtask_processing/images/0", nil))
+	require.Equal(t, http.StatusConflict, w.Code)
+}
+
 func TestAsyncImageHandlerDisabledReturns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}

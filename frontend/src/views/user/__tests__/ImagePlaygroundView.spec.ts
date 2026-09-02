@@ -58,7 +58,10 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         Icon: { template: '<span />' },
-        BaseDialog: { template: '<div><slot /></div>' },
+        BaseDialog: {
+          props: ['show'],
+          template: '<div v-if="show" role="dialog"><slot /></div>',
+        },
         ImageUpload: { template: '<div />' },
         Toggle: { template: '<input />' },
         MaskEditor: { template: '<div />' },
@@ -110,6 +113,10 @@ describe('ImagePlaygroundView async generation', () => {
     expect(wrapper.get('button.btn-primary').text()).toContain('imagePlayground.generate')
     expect(galleryAdd).toHaveBeenCalledOnce()
     expect(showSuccess).toHaveBeenCalledWith('imagePlayground.generateSuccess')
+
+    await wrapper.get('img[alt="generated"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
   })
 
   it('shows elapsed time while processing and freezes the duration on completion', async () => {

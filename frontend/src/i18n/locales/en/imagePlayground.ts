@@ -41,6 +41,7 @@ export default {
     asyncUnavailable: 'Async image generation is unavailable. Configure image object storage first.',
     generateTimeout: 'Image generation timed out. Please try again later.',
     downloadFailed: 'Image download failed. Check that the image resource is still available.',
+    referenceImageFailed: 'Failed to load the reference image. Check that the image resource is still available.',
     tabResults: 'Results',
     tabGallery: 'Gallery',
     refresh: 'Refresh',

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -185,6 +187,118 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 		c.Header("Retry-After", "3")
 	}
 	c.JSON(http.StatusOK, task)
+}
+
+func (h *AsyncImageHandler) DownloadImage(c *gin.Context) {
+	if !h.pollable() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskError(c, service.ErrImageTaskForbidden)
+		return
+	}
+	index, err := strconv.Atoi(c.Param("index"))
+	if err != nil || index < 0 {
+		imageTaskJSONError(c, http.StatusNotFound, "IMAGE_IMAGE_NOT_FOUND", "image not found")
+		return
+	}
+	task, err := h.tasks.Get(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, c.Param("task_id"))
+	if err != nil {
+		imageTaskError(c, err)
+		return
+	}
+	if task.Status != service.ImageTaskStatusCompleted {
+		imageTaskJSONError(c, http.StatusConflict, "IMAGE_TASK_NOT_READY", "image task is not completed")
+		return
+	}
+
+	var result struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(task.Result, &result); err != nil || index >= len(result.Data) {
+		imageTaskJSONError(c, http.StatusNotFound, "IMAGE_IMAGE_NOT_FOUND", "image not found")
+		return
+	}
+	imageURL, err := url.Parse(strings.TrimSpace(result.Data[index].URL))
+	if err != nil || imageURL.User != nil || (imageURL.Scheme != "http" && imageURL.Scheme != "https") || imageURL.Host == "" {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is unavailable")
+		return
+	}
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, imageURL.String(), nil)
+	if err != nil {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is unavailable")
+		return
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is unavailable")
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is unavailable")
+		return
+	}
+	const maxImageProxyBytes int64 = 32 << 20
+	if response.ContentLength > maxImageProxyBytes {
+		imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "IMAGE_ASSET_TOO_LARGE", "image resource is too large")
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxImageProxyBytes+1))
+	if err != nil {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is unavailable")
+		return
+	}
+	if int64(len(data)) > maxImageProxyBytes {
+		imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "IMAGE_ASSET_TOO_LARGE", "image resource is too large")
+		return
+	}
+	contentType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = strings.TrimSpace(strings.Split(http.DetectContentType(data), ";")[0])
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		imageTaskJSONError(c, http.StatusBadGateway, "IMAGE_ASSET_UNAVAILABLE", "image resource is not an image")
+		return
+	}
+
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Content-Disposition", `attachment; filename="sub2api-image-`+sanitizeImageFilenamePart(c.Param("task_id"))+`-`+strconv.Itoa(index)+imageProxyExtension(contentType)+`"`)
+	c.Header("Content-Length", strconv.Itoa(len(data)))
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, contentType, data)
+}
+
+func sanitizeImageFilenamePart(value string) string {
+	value = strings.NewReplacer("/", "_", "\\", "_", `"`, "_").Replace(strings.TrimSpace(value))
+	if value == "" {
+		return "image"
+	}
+	return value
+}
+
+func imageProxyExtension(contentType string) string {
+	switch strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0])) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".png"
+	}
 }
 
 func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
