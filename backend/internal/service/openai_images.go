@@ -634,6 +634,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -653,6 +655,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
@@ -685,6 +689,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			if streamCount > 0 {
 				return &OpenAIForwardResult{
 					RequestID:        resp.Header.Get("x-request-id"),
+					UpstreamHeaders:  resp.Header,
 					Usage:            streamUsage,
 					Model:            requestModel,
 					UpstreamModel:    upstreamModel,
@@ -706,6 +711,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		firstTokenMs = ttft
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -725,9 +731,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			c,
 			account,
 			proxyURL,
-			parsed.ResponseFormat,
+			parsed,
 		)
-
 		if err != nil {
 			return nil, err
 		}
@@ -738,6 +743,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		}
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -905,11 +911,23 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 	c *gin.Context,
 	account *Account,
 	proxyURL string,
-	responseFormat string,
+	parsedOrResponseFormat any,
 ) (OpenAIUsage, int, []string, error) {
+	var parsed *OpenAIImagesRequest
+	var responseFormat string
+	switch value := parsedOrResponseFormat.(type) {
+	case *OpenAIImagesRequest:
+		parsed = value
+	case string:
+		responseFormat = value
+	}
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
+	}
+	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	if parsed != nil {
+		responseFormat = parsed.ResponseFormat
 	}
 	format := strings.ToLower(strings.TrimSpace(responseFormat))
 	if format == "" || format == "b64_json" {
