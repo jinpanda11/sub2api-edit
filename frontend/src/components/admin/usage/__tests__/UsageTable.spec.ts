@@ -71,6 +71,9 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
+	'usage.latencyFirstToken': 'First',
+	'usage.latencyDuration': 'Total',
+	'usage.outputRate': 'Output rate',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -93,6 +96,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
       </div>
@@ -223,6 +227,57 @@ describe('admin UsageTable tooltip', () => {
     expect(requestBadges[1].text()).toBe('Sync')
     expect(wrapper.findAll('[data-testid="native-compaction-badge"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="native-compaction-badge"]').text()).toBe('Compaction')
+  })
+
+  it('shows generation output rate in the latency cell', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-throughput',
+          billing_mode: 'token',
+          image_count: 0,
+          output_tokens: 191,
+          image_output_tokens: 0,
+          duration_ms: 4250,
+          first_token_ms: 1760,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Output rate')
+    expect(wrapper.text()).toContain('76.7 t/s')
+  })
+
+  it('shows a placeholder when output rate cannot be calculated', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: 'req-no-throughput', billing_mode: 'token', image_count: 0 }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Output rate')
+    expect(wrapper.text()).toContain('—')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {
